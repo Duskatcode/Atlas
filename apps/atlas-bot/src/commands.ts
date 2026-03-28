@@ -15,11 +15,11 @@ export const commands = [
 
   new SlashCommandBuilder()
     .setName('play')
-    .setDescription('Reproduce audio desde una URL directa o un archivo local')
+    .setDescription('Reproduce una URL, playlist o búsqueda')
     .addStringOption((option) =>
       option
         .setName('source')
-        .setDescription('URL directa o nombre del archivo dentro de assets/audio')
+        .setDescription('URL, playlist o texto de búsqueda')
         .setRequired(true),
     ),
 
@@ -33,7 +33,11 @@ export const commands = [
 
   new SlashCommandBuilder()
     .setName('stop')
-    .setDescription('Detiene la reproducción actual'),
+    .setDescription('Detiene la reproducción y vacía la cola'),
+
+  new SlashCommandBuilder()
+    .setName('skip')
+    .setDescription('Salta a la siguiente pista'),
 
   new SlashCommandBuilder()
     .setName('volume')
@@ -49,5 +53,5 @@ export const commands = [
 
   new SlashCommandBuilder()
     .setName('nowplaying')
-    .setDescription('Muestra lo que Atlas está reproduciendo'),
+    .setDescription('Muestra la pista actual'),
 ].map((command) => command.toJSON());

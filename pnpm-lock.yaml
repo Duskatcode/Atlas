@@ -45,6 +45,9 @@ importers:
       opusscript:
         specifier: ^0.1.1
         version: 0.1.1
+      shoukaku:
+        specifier: ^4.3.0
+        version: 4.3.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -450,6 +453,10 @@ packages:
   resolve-pkg-maps@1.0.0:
     resolution: {integrity: sha512-seS2Tj26TBVOC2NIc2rOe2y2ZO7efxITtLZcGSOnHHNOQ7CkiUBfw0Iw2ck6xkIhPwLhKNLS8BO+hEpngQlqzw==}
 
+  shoukaku@4.3.0:
+    resolution: {integrity: sha512-jMEqVKvquGEqysnOL7a1hmnOAEJO47kTLoS7cGJLbIya3olSlFkMq7jbrrENijnx8fujXvMgUmQqwEdQk/Rkug==}
+    engines: {node: '>=18.0.0', npm: '>=7.0.0'}
+
   ts-mixer@6.0.4:
     resolution: {integrity: sha512-ufKpbmrugz5Aou4wcr5Wc1UUFWOLhq+Fm6qa6P0w0K5Qw2yhaUoiWszhCVuNQyNwrlGiscHOmqYoAox1PtvgjA==}
 
@@ -846,6 +853,13 @@ snapshots:
       opusscript: 0.1.1
 
   resolve-pkg-maps@1.0.0: {}
+
+  shoukaku@4.3.0:
+    dependencies:
+      ws: 8.20.0
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
 
   ts-mixer@6.0.4: {}
 
