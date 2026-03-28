@@ -76,6 +76,21 @@ out/
 *.db
 
 # -----------------------------
+# Lavalink local setup
+# -----------------------------
+services/lavalink/Lavalink.jar
+services/lavalink/lavalink.log
+services/lavalink/plugins/
+services/lavalink/*.jar
+
+# -----------------------------
+# Local audio test assets
+# -----------------------------
+apps/atlas-bot/assets/audio/
+# Si luego quieres dejar la carpeta pero no vacía:
+# !apps/atlas-bot/assets/audio/.gitkeep
+
+# -----------------------------
 # Misc
 # -----------------------------
 *.local
