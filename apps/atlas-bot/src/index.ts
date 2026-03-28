@@ -3,15 +3,18 @@ import {
   Client,
   Events,
   GatewayIntentBits,
-  PermissionsBitField,
 } from 'discord.js';
-import {
-  entersState,
-  getVoiceConnection,
-  joinVoiceChannel,
-  VoiceConnectionStatus,
-} from '@discordjs/voice';
 import { env } from './config.js';
+import {
+  getNowPlaying,
+  joinMemberVoice,
+  leaveVoice,
+  pausePlayback,
+  playSource,
+  resumePlayback,
+  setPlaybackVolume,
+  stopPlayback,
+} from './music/music-manager.js';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -29,12 +32,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (error) {
     console.error('❌ Error en comando:', error);
 
+    const message =
+      error instanceof Error
+        ? `❌ ${error.message}`
+        : '❌ Ocurrió un error ejecutando el comando.';
+
     try {
       if (interaction.deferred || interaction.replied) {
-        await interaction.editReply('❌ Ocurrió un error ejecutando el comando.');
+        await interaction.editReply(message);
       } else {
         await interaction.reply({
-          content: '❌ Ocurrió un error ejecutando el comando.',
+          content: message,
           ephemeral: true,
         });
       }
@@ -44,6 +52,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+async function getRequestMember(interaction: ChatInputCommandInteraction) {
+  if (!interaction.guild) {
+    throw new Error('Este comando solo funciona dentro de un servidor.');
+  }
+
+  return interaction.guild.members.fetch(interaction.user.id);
+}
+
 async function handleChatCommand(interaction: ChatInputCommandInteraction) {
   if (interaction.commandName === 'ping') {
     await interaction.reply('🏓 Pong');
@@ -51,80 +67,120 @@ async function handleChatCommand(interaction: ChatInputCommandInteraction) {
   }
 
   if (interaction.commandName === 'join') {
-    if (!interaction.guild || !interaction.guildId) {
-      await interaction.reply({
-        content: 'Este comando solo funciona dentro de un servidor.',
-        ephemeral: true,
-      });
-      return;
+    await interaction.deferReply();
+
+    if (!interaction.guild) {
+      throw new Error('Este comando solo funciona dentro de un servidor.');
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    const member = await getRequestMember(interaction);
+    const channelName = await joinMemberVoice(interaction.guild, member);
 
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-    const voiceChannel = member.voice.channel;
-
-    if (!voiceChannel) {
-      await interaction.editReply('Debes estar dentro de un canal de voz para que Atlas entre.');
-      return;
-    }
-
-    const permissions = voiceChannel.permissionsFor(interaction.client.user.id);
-
-    if (!permissions?.has(PermissionsBitField.Flags.ViewChannel)) {
-      await interaction.editReply('No tengo permiso para ver ese canal de voz.');
-      return;
-    }
-
-    if (!permissions?.has(PermissionsBitField.Flags.Connect)) {
-      await interaction.editReply('No tengo permiso para conectarme a ese canal de voz.');
-      return;
-    }
-
-    if (!permissions?.has(PermissionsBitField.Flags.Speak)) {
-      await interaction.editReply('No tengo permiso para hablar en ese canal de voz.');
-      return;
-    }
-
-    const existingConnection = getVoiceConnection(interaction.guildId);
-    if (existingConnection) {
-      existingConnection.destroy();
-    }
-
-    const connection = joinVoiceChannel({
-      channelId: voiceChannel.id,
-      guildId: interaction.guildId,
-      adapterCreator: interaction.guild.voiceAdapterCreator,
-      selfDeaf: false,
-    });
-
-    await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
-
-    await interaction.editReply(`🎤 Atlas entró a **${voiceChannel.name}**`);
+    await interaction.editReply(`🎤 Atlas entró a **${channelName}**`);
     return;
   }
 
   if (interaction.commandName === 'leave') {
+    await interaction.deferReply();
+
     if (!interaction.guildId) {
-      await interaction.reply({
-        content: 'Este comando solo funciona dentro de un servidor.',
-        ephemeral: true,
-      });
-      return;
+      throw new Error('Este comando solo funciona dentro de un servidor.');
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    const left = leaveVoice(interaction.guildId);
 
-    const connection = getVoiceConnection(interaction.guildId);
-
-    if (!connection) {
-      await interaction.editReply('Atlas no está conectado a ningún canal de voz.');
-      return;
-    }
-
-    connection.destroy();
-    await interaction.editReply('👋 Atlas salió del canal de voz');
+    await interaction.editReply(
+      left
+        ? '👋 Atlas salió del canal de voz'
+        : 'Atlas no está conectado a ningún canal de voz.',
+    );
     return;
+  }
+
+  if (interaction.commandName === 'play') {
+    await interaction.deferReply();
+
+    if (!interaction.guild) {
+      throw new Error('Este comando solo funciona dentro de un servidor.');
+    }
+
+    const member = await getRequestMember(interaction);
+    const source = interaction.options.getString('source', true);
+
+    const result = await playSource(
+      interaction.guild,
+      member,
+      source,
+      interaction.user.username,
+    );
+
+    await interaction.editReply(
+      `▶️ Reproduciendo **${result.title}** en **${result.channelName}**`,
+    );
+    return;
+  }
+
+  if (interaction.commandName === 'pause') {
+    const paused = interaction.guildId ? pausePlayback(interaction.guildId) : false;
+
+    await interaction.reply(
+      paused
+        ? '⏸️ Reproducción pausada'
+        : 'No hay nada reproduciéndose ahora mismo.',
+    );
+    return;
+  }
+
+  if (interaction.commandName === 'resume') {
+    const resumed = interaction.guildId ? resumePlayback(interaction.guildId) : false;
+
+    await interaction.reply(
+      resumed
+        ? '▶️ Reproducción reanudada'
+        : 'No hay reproducción pausada para reanudar.',
+    );
+    return;
+  }
+
+  if (interaction.commandName === 'stop') {
+    const stopped = interaction.guildId ? stopPlayback(interaction.guildId) : false;
+
+    await interaction.reply(
+      stopped
+        ? '⏹️ Reproducción detenida'
+        : 'No hay nada reproduciéndose ahora mismo.',
+    );
+    return;
+  }
+
+  if (interaction.commandName === 'volume') {
+    if (!interaction.guildId) {
+      throw new Error('Este comando solo funciona dentro de un servidor.');
+    }
+
+    const percent = interaction.options.getInteger('percent', true);
+    const changed = setPlaybackVolume(interaction.guildId, percent);
+
+    await interaction.reply(
+      changed
+        ? `🔊 Volumen ajustado a **${percent}%**`
+        : 'No hay una pista activa para cambiar el volumen.',
+    );
+    return;
+  }
+
+  if (interaction.commandName === 'nowplaying') {
+    if (!interaction.guildId) {
+      throw new Error('Este comando solo funciona dentro de un servidor.');
+    }
+
+    const track = getNowPlaying(interaction.guildId);
+
+    await interaction.reply(
+      track
+        ? `🎶 Sonando ahora: **${track.title}**`
+        : 'No hay nada reproduciéndose en este momento.',
+    );
   }
 }
 
