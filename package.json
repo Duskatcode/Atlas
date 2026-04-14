@@ -4,7 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "pnpm --filter atlas-bot dev",
+    "build": "pnpm --filter atlas-bot build",
+    "typecheck": "pnpm --filter atlas-bot typecheck",
+    "verify": "pnpm run typecheck && pnpm run build",
+    "deploy:commands": "pnpm --filter atlas-bot deploy:commands",
+    "test": "pnpm run verify"
   },
   "keywords": [],
   "author": "",

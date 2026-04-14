@@ -13,6 +13,20 @@ Actualmente el proyecto se encuentra en su fase inicial, con una base técnica f
 
 ---
 
+## Scripts y verificación rápida
+
+Todos los comandos se ejecutan desde la raíz con `pnpm`:
+
+- `pnpm dev`: corre el bot en modo desarrollo usando `tsx`.
+- `pnpm typecheck`: valida los tipos de todos los paquetes (actualmente Atlas Song) sin emitir artefactos.
+- `pnpm build`: compila el bot y genera la salida en `apps/atlas-bot/dist`.
+- `pnpm verify`: ejecuta `typecheck` seguido de `build`; es el chequeo mínimo antes de abrir un PR o desplegar.
+- `pnpm deploy:commands`: registra los slash commands en Discord.
+
+`pnpm test` es un alias de `pnpm verify` hasta que existan pruebas reales.
+
+---
+
 ## Estado actual
 
 ### Implementado
