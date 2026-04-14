@@ -19,10 +19,14 @@ type PendingSelection = {
   userId: string;
   tracks: QueueTrack[];
   firstTitle: string;
+  expiresAt: number;
 };
 
 const sessions = new Map<string, GuildSession>();
 const pendingSelections = new Map<string, PendingSelection>();
+const pendingSelectionTimers = new Map<string, NodeJS.Timeout>();
+
+const PENDING_SELECTION_TTL_MS = 5 * 60 * 1000; // 5 minutos
 
 function normalizeIdentifier(source: string) {
   const value = source.trim();
@@ -55,6 +59,29 @@ function shuffleArray<T>(items: T[]) {
 
 function createSelectionId() {
   return randomUUID();
+}
+
+function clearPendingSelectionTimer(selectionId: string) {
+  const timer = pendingSelectionTimers.get(selectionId);
+  if (!timer) return;
+  clearTimeout(timer);
+  pendingSelectionTimers.delete(selectionId);
+}
+
+function dropPendingSelection(selectionId: string) {
+  pendingSelections.delete(selectionId);
+  clearPendingSelectionTimer(selectionId);
+}
+
+function scheduleSelectionExpiration(selectionId: string) {
+  clearPendingSelectionTimer(selectionId);
+  const timer = setTimeout(() => {
+    pendingSelections.delete(selectionId);
+    pendingSelectionTimers.delete(selectionId);
+  }, PENDING_SELECTION_TTL_MS);
+
+  timer.unref?.();
+  pendingSelectionTimers.set(selectionId, timer);
 }
 
 async function resolveTracks(source: string, requestedBy?: string): Promise<QueueTrack[]> {
@@ -228,7 +255,9 @@ export async function prepareSource(
     userId: member.id,
     tracks,
     firstTitle: tracks[0]?.title ?? 'Sin título',
+    expiresAt: Date.now() + PENDING_SELECTION_TTL_MS,
   });
+  scheduleSelectionExpiration(selectionId);
 
   return {
     needsChoice: true,
@@ -246,17 +275,22 @@ export async function applyPendingSelection(
   const pending = pendingSelections.get(selectionId);
 
   if (!pending) {
-    throw new Error('Esta selección ya no existe o expiró.');
+    throw new Error('Esta selección expiró o ya fue usada. Ejecuta /play nuevamente.');
   }
 
   if (pending.userId !== userId) {
     throw new Error('Solo quien cargó la playlist puede elegir el modo.');
   }
 
+  if (pending.expiresAt <= Date.now()) {
+    dropPendingSelection(selectionId);
+    throw new Error('Esta selección expiró. Usa /play de nuevo para cargar la playlist.');
+  }
+
   const session = sessions.get(pending.guildId);
 
   if (!session) {
-    pendingSelections.delete(selectionId);
+    dropPendingSelection(selectionId);
     throw new Error('No hay sesión activa de reproducción.');
   }
 
@@ -266,7 +300,7 @@ export async function applyPendingSelection(
       : pending.tracks;
 
   session.queue.push(...finalTracks);
-  pendingSelections.delete(selectionId);
+  dropPendingSelection(selectionId);
 
   const startedNow = await playNext(pending.guildId);
 
