@@ -11,7 +11,7 @@ import {
   getVoiceConnection,
   joinVoiceChannel,
 } from '@discordjs/voice';
-import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -20,7 +20,7 @@ import { Guild, GuildMember, PermissionsBitField } from 'discord.js';
 interface TrackMetadata {
   title: string;
   requestedBy?: string;
-  process?: ChildProcessWithoutNullStreams;
+  process?: ChildProcess;
 }
 
 interface GuildSession {

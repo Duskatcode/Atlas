@@ -3,13 +3,13 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
+    "composite": true,
+    "declaration": true,
     "module": "NodeNext",
     "moduleResolution": "NodeNext"
   },
   "include": ["src"],
   "references": [
-    { "path": "../../packages/atlas-types" },
-    { "path": "../../packages/atlas-shared" },
-    { "path": "../../packages/atlas-core" }
+    { "path": "../atlas-types" }
   ]
 }

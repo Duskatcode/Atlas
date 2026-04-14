@@ -9,6 +9,8 @@ const envSchema = z.object({
   LAVALINK_HOST: z.string().min(1),
   LAVALINK_PORT: z.coerce.number().int().positive(),
   LAVALINK_PASSWORD: z.string().min(1),
+  ENABLE_ATLAS_SONGER: z.string().optional(),
+  ENABLE_ATLAS_CREATOR: z.string().optional(),
 });
 
 export const env = envSchema.parse(process.env);
