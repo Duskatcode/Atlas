@@ -1,0 +1,21 @@
+{
+  "name": "@atlas/types",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "discord-api-types": "^0.37.99",
+    "discord.js": "^14.25.1"
+  }
+}

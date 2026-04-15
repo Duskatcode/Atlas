@@ -33,6 +33,15 @@ importers:
 
   apps/atlas-bot:
     dependencies:
+      '@atlas/core':
+        specifier: workspace:*
+        version: link:../../packages/atlas-core
+      '@atlas/shared':
+        specifier: workspace:*
+        version: link:../../packages/atlas-shared
+      '@atlas/types':
+        specifier: workspace:*
+        version: link:../../packages/atlas-types
       '@discordjs/voice':
         specifier: ^0.19.2
         version: 0.19.2(@emnapi/core@1.9.1)(@emnapi/runtime@1.9.1)(opusscript@0.1.1)
@@ -59,8 +68,38 @@ importers:
         specifier: ^4.19.3
         version: 4.21.0
       typescript:
-        specifier: ^5.8.3
-        version: 5.9.3
+        specifier: ^6.0.2
+        version: 6.0.2
+
+  packages/atlas-core:
+    dependencies:
+      '@atlas/shared':
+        specifier: workspace:*
+        version: link:../atlas-shared
+      '@atlas/types':
+        specifier: workspace:*
+        version: link:../atlas-types
+      discord.js:
+        specifier: ^14.25.1
+        version: 14.25.1
+
+  packages/atlas-shared:
+    dependencies:
+      '@atlas/types':
+        specifier: workspace:*
+        version: link:../atlas-types
+      discord.js:
+        specifier: ^14.25.1
+        version: 14.25.1
+
+  packages/atlas-types:
+    dependencies:
+      discord-api-types:
+        specifier: ^0.37.99
+        version: 0.37.120
+      discord.js:
+        specifier: ^14.25.1
+        version: 14.25.1
 
 packages:
 
@@ -390,6 +429,9 @@ packages:
     resolution: {integrity: sha512-Xfe6rpCTxSxfbswi/W/Pz7zp1WWSNn4A0eW4mLkQUewCrXXtMj31lCg+iQyTkh/CkusZSq9eDflu7tjEDXUY6g==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
 
+  discord-api-types@0.37.120:
+    resolution: {integrity: sha512-7xpNK0EiWjjDFp2nAhHXezE4OUWm7s1zhc/UXXN6hnFFU8dfoPHgV0Hx0RPiCa3ILRpdeh152icc68DGCyXYIw==}
+
   discord-api-types@0.38.42:
     resolution: {integrity: sha512-qs1kya7S84r5RR8m9kgttywGrmmoHaRifU1askAoi+wkoSefLpZP6aGXusjNw5b0jD3zOg3LTwUa3Tf2iHIceQ==}
 
@@ -466,11 +508,6 @@ packages:
   tsx@4.21.0:
     resolution: {integrity: sha512-5C1sg4USs1lfG0GFb2RLXsdpXqBSEhAaA/0kPL01wxzpMqLILNxIxIOKiILz+cdg/pLnOUxFYOR5yhHU666wbw==}
     engines: {node: '>=18.0.0'}
-    hasBin: true
-
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
-    engines: {node: '>=14.17'}
     hasBin: true
 
   typescript@6.0.2:
@@ -777,6 +814,8 @@ snapshots:
 
   '@vladfrangu/async_event_emitter@2.4.7': {}
 
+  discord-api-types@0.37.120: {}
+
   discord-api-types@0.38.42: {}
 
   discord.js@14.25.1:
@@ -871,8 +910,6 @@ snapshots:
       get-tsconfig: 4.13.7
     optionalDependencies:
       fsevents: 2.3.3
-
-  typescript@5.9.3: {}
 
   typescript@6.0.2: {}
 

@@ -24,12 +24,20 @@ import {
   skipPlayback,
   stopPlayback,
 } from './music/lavalink-manager.js';
+import {
+  bootstrapModuleRegistry,
+  logModuleSummary,
+} from './modules/index.js';
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
 });
 
 initShoukaku(client);
+const moduleRegistry = bootstrapModuleRegistry(client);
+moduleRegistry.initializeModules().catch((error) => {
+  console.error('[modules] Error al inicializar los módulos', error);
+});
 
 const pausedGuilds = new Set<string>();
 
@@ -71,6 +79,7 @@ function getPlaybackControls(guildId?: string) {
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`✅ Atlas encendido como ${readyClient.user.tag}`);
+  logModuleSummary(moduleRegistry);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
