@@ -1,49 +1,48 @@
-# Trazabilidad del proyecto Atlas
+# Trazabilidad de Atlas
 
-## Commit 1 - Inicialización del proyecto
-**Fecha:** 2026-03-28  
-**Tipo:** chore/init
+Resumen de hitos principales de la transición a arquitectura modular dual.
 
-### Objetivo
-Inicializar la base técnica del proyecto Atlas como bot modular de Discord, dejando preparada la estructura para crecimiento por dominios como:
-- Atlas Songs
-- Atlas Constructor
-- Atlas Rank
+## Hitos
 
-### Alcance de este primer commit
-Se creó la estructura base del proyecto con enfoque monorepo:
-- `apps/atlas-bot`
-- `packages/core`
-- `packages/config`
-- `packages/discord-common`
+1. **Inicialización del monorepo**
+- Base TypeScript + pnpm workspace.
+- App inicial de bot en Discord.
 
-### Componentes incluidos
-- Configuración inicial con TypeScript
-- Configuración de workspace con pnpm
-- Variables de entorno mediante `.env`
-- Bot funcional en Discord
-- Registro de slash commands
-- Comando `/ping` operativo
-- Comandos `/join` y `/leave` en desarrollo
-- Archivo `.gitignore` para proteger dependencias, builds y secretos
+2. **Fundación modular (phase0)**
+- Contratos comunes en `@atlas/types`.
+- Registro de módulos en `@atlas/core`.
+- Flags por entorno en `@atlas/shared`.
 
-### Estado funcional al cierre de este commit
-- Atlas inicia sesión correctamente
-- `/ping` responde correctamente
-- Los comandos se despliegan correctamente
-- La conexión de voz está en fase de validación y ajuste
+3. **Orquestador del bot (phase0)**
+- `apps/atlas-bot` como capa de bootstrap + routing.
+- Carga centralizada de módulos y handlers.
 
-### Riesgos / notas
-- No se deben versionar tokens ni archivos `.env`
-- Los permisos del bot pueden variar según el servidor y canal
-- La lógica de voz puede requerir validación específica por servidor
+4. **Migración de Songer (phase0)**
+- Dominio musical extraído a `@atlas/songer`.
+- Integración por módulo en el orquestador.
 
-### Próximos pasos
-1. Estabilizar `/join` y `/leave`
-2. Implementar reproducción local con `/play`
-3. Crear gestor de voz desacoplado
-4. Introducir cola por guild
-5. Separar módulos compartidos en `packages`
+5. **Base de Creator (phase1)**
+- Módulo `@atlas/creator` con `/creator templates` y `/creator preview`.
+- Plantilla inicial `basic-community` en modo no destructivo.
 
-### Responsable
-Proyecto Atlas - fase inicial
+6. **Apply seguro de Creator (phase1)**
+- `/creator apply` con confirmación explícita.
+- Expiración de confirmación y restricción por usuario.
+- Creación segura (sin borrar/sobrescribir, con omisiones idempotentes).
+
+## Estado de arquitectura
+
+ATLAS opera como un solo proceso con dos dominios desacoplados:
+
+- `atlas-songer` (música)
+- `atlas-creator` (estructura de servidor)
+
+Controlados por flags:
+
+- `ENABLE_ATLAS_SONGER`
+- `ENABLE_ATLAS_CREATOR`
+
+## Documentación relacionada
+
+- `README.md`: arquitectura, setup y operación diaria.
+- `docs/OPERACION_DUAL.md`: checklist manual de validación en Discord.

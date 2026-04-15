@@ -1,10 +1,16 @@
 {
   "name": "Atlas",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Atlas Discord bot with modular dual-domain architecture (Songer + Creator).",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r exec tsc -p tsconfig.json --noEmit",
+    "verify": "pnpm build && pnpm typecheck",
+    "bot:dev": "pnpm --filter atlas-bot dev",
+    "bot:build": "pnpm --filter atlas-bot build",
+    "bot:start": "pnpm --filter atlas-bot start",
+    "bot:deploy-commands": "pnpm --filter atlas-bot deploy:commands"
   },
   "keywords": [],
   "author": "",
