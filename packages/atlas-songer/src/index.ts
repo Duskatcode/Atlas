@@ -27,11 +27,34 @@ export interface AtlasSongerModuleOptions {
   lavalink: AtlasSongerLavalinkConfig;
 }
 
-const playlistModePattern = /^playlist_mode:(shuffle|normal):(.+)$/;
+type SongerSubcommand =
+  | 'join'
+  | 'leave'
+  | 'play'
+  | 'pause'
+  | 'resume'
+  | 'skip'
+  | 'stop'
+  | 'volume'
+  | 'nowplaying';
+
+const SONGER_COMMAND_NAME = 'songer';
+const SONGER_COMPONENT_PREFIX = 'songer';
+const SONGER_COMPONENT_IDS = {
+  playlistModeShuffle: `${SONGER_COMPONENT_PREFIX}:playlist_mode:shuffle`,
+  playlistModeNormal: `${SONGER_COMPONENT_PREFIX}:playlist_mode:normal`,
+  togglePause: `${SONGER_COMPONENT_PREFIX}:queue_toggle_pause`,
+  next: `${SONGER_COMPONENT_PREFIX}:queue_next`,
+  shuffle: `${SONGER_COMPONENT_PREFIX}:queue_shuffle`,
+  stop: `${SONGER_COMPONENT_PREFIX}:queue_stop`,
+  leave: `${SONGER_COMPONENT_PREFIX}:queue_leave`,
+} as const;
+
+const playlistModePattern = /^songer:playlist_mode:(shuffle|normal):(.+)$/;
 
 const buildPlaybackControls = (pausedGuilds: Set<string>, guildId?: string) => {
   const toggleButton = new ButtonBuilder()
-    .setCustomId('queue_toggle_pause')
+    .setCustomId(SONGER_COMPONENT_IDS.togglePause)
     .setLabel('Pausar')
     .setEmoji('⏸️')
     .setStyle(ButtonStyle.Primary);
@@ -46,22 +69,22 @@ const buildPlaybackControls = (pausedGuilds: Set<string>, guildId?: string) => {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     toggleButton,
     new ButtonBuilder()
-      .setCustomId('queue_next')
+      .setCustomId(SONGER_COMPONENT_IDS.next)
       .setLabel('Siguiente')
       .setEmoji('⏭️')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId('queue_shuffle')
+      .setCustomId(SONGER_COMPONENT_IDS.shuffle)
       .setLabel('Random')
       .setEmoji('🔀')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId('queue_stop')
+      .setCustomId(SONGER_COMPONENT_IDS.stop)
       .setLabel('Detener')
       .setEmoji('⏹️')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
-      .setCustomId('queue_leave')
+      .setCustomId(SONGER_COMPONENT_IDS.leave)
       .setLabel('Salir')
       .setEmoji('👋')
       .setStyle(ButtonStyle.Secondary),
@@ -76,245 +99,289 @@ const requireGuildMember = async (interaction: ChatInputCommandInteraction) => {
   return interaction.guild.members.fetch(interaction.user.id);
 };
 
-const createPingCommand = (): SlashCommandHandler => ({
-  id: 'atlas-songer:ping',
-  data: new SlashCommandBuilder()
-    .setName('ping')
-    .setDescription('Responde con pong'),
-  execute: async (interaction) => {
-    await interaction.reply('🏓 Pong');
-  },
-});
+const executeJoinCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  await interaction.deferReply();
 
-const createJoinCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:join',
-  data: new SlashCommandBuilder()
-    .setName('join')
-    .setDescription('Atlas entra al canal de voz'),
-  execute: async (interaction) => {
-    await interaction.deferReply();
+  if (!interaction.guild) {
+    throw new Error('Este comando solo funciona dentro de un servidor.');
+  }
 
-    if (!interaction.guild) {
-      throw new Error('Este comando solo funciona dentro de un servidor.');
-    }
+  const member = await requireGuildMember(interaction);
+  const channelName = await joinMemberVoice(interaction.guild, member);
 
-    const member = await requireGuildMember(interaction);
-    const channelName = await joinMemberVoice(interaction.guild, member);
+  pausedGuilds.delete(interaction.guild.id);
 
-    pausedGuilds.delete(interaction.guild.id);
+  await interaction.editReply(`🎤 Atlas entró a **${channelName}**`);
+};
 
-    await interaction.editReply(`🎤 Atlas entró a **${channelName}**`);
-  },
-});
+const executeLeaveCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  await interaction.deferReply();
 
-const createLeaveCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:leave',
-  data: new SlashCommandBuilder()
-    .setName('leave')
-    .setDescription('Atlas sale del canal de voz'),
-  execute: async (interaction) => {
-    await interaction.deferReply();
+  if (!interaction.guildId) {
+    throw new Error('Este comando solo funciona dentro de un servidor.');
+  }
 
-    if (!interaction.guildId) {
-      throw new Error('Este comando solo funciona dentro de un servidor.');
-    }
+  const left = await leaveVoice(interaction.guildId);
+  pausedGuilds.delete(interaction.guildId);
 
-    const left = await leaveVoice(interaction.guildId);
-    pausedGuilds.delete(interaction.guildId);
+  await interaction.editReply(
+    left ? '👋 Atlas salió del canal de voz' : 'Atlas no estaba conectado.',
+  );
+};
 
-    await interaction.editReply(
-      left ? '👋 Atlas salió del canal de voz' : 'Atlas no estaba conectado.',
+const executePlayCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  await interaction.deferReply();
+
+  if (!interaction.guild) {
+    throw new Error('Este comando solo funciona dentro de un servidor.');
+  }
+
+  const member = await requireGuildMember(interaction);
+  const source = interaction.options.getString('source', true);
+  const result = await prepareSource(
+    interaction.guild,
+    member,
+    source,
+    interaction.user.username,
+  );
+
+  if (result.needsChoice) {
+    const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`${SONGER_COMPONENT_IDS.playlistModeShuffle}:${result.selectionId}`)
+        .setLabel('Aleatorio')
+        .setEmoji('🔀')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`${SONGER_COMPONENT_IDS.playlistModeNormal}:${result.selectionId}`)
+        .setLabel('Normal')
+        .setEmoji('➡️')
+        .setStyle(ButtonStyle.Secondary),
     );
-  },
-});
-
-const createPlayCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:play',
-  data: new SlashCommandBuilder()
-    .setName('play')
-    .setDescription('Reproduce una URL, playlist o búsqueda')
-    .addStringOption((option) =>
-      option
-        .setName('source')
-        .setDescription('URL, playlist o texto de búsqueda')
-        .setRequired(true),
-    ),
-  execute: async (interaction) => {
-    await interaction.deferReply();
-
-    if (!interaction.guild) {
-      throw new Error('Este comando solo funciona dentro de un servidor.');
-    }
-
-    const member = await requireGuildMember(interaction);
-    const source = interaction.options.getString('source', true);
-    const result = await prepareSource(
-      interaction.guild,
-      member,
-      source,
-      interaction.user.username,
-    );
-
-    if (result.needsChoice) {
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`playlist_mode:shuffle:${result.selectionId}`)
-          .setLabel('Aleatorio')
-          .setEmoji('🔀')
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(`playlist_mode:normal:${result.selectionId}`)
-          .setLabel('Normal')
-          .setEmoji('➡️')
-          .setStyle(ButtonStyle.Secondary),
-      );
-
-      await interaction.editReply({
-        content: `📚 Detecté una playlist con **${result.added}** pistas. ¿Cómo quieres cargarla?`,
-        components: [row],
-      });
-
-      return;
-    }
-
-    if (interaction.guildId && result.startedNow) {
-      pausedGuilds.delete(interaction.guildId);
-    }
 
     await interaction.editReply({
-      content: result.startedNow
-        ? `▶️ Reproduciendo **${result.firstTitle}**`
-        : `➕ Añadida a la cola: **${result.firstTitle}**`,
-      components: interaction.guildId
-        ? [buildPlaybackControls(pausedGuilds, interaction.guildId)]
-        : [],
+      content: `📚 Detecté una playlist con **${result.added}** pistas. ¿Cómo quieres cargarla?`,
+      components: [row],
     });
-  },
-});
 
-const createPauseCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:pause',
+    return;
+  }
+
+  if (interaction.guildId && result.startedNow) {
+    pausedGuilds.delete(interaction.guildId);
+  }
+
+  await interaction.editReply({
+    content: result.startedNow
+      ? `▶️ Reproduciendo **${result.firstTitle}**`
+      : `➕ Añadida a la cola: **${result.firstTitle}**`,
+    components: interaction.guildId
+      ? [buildPlaybackControls(pausedGuilds, interaction.guildId)]
+      : [],
+  });
+};
+
+const executePauseCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  const paused = interaction.guildId
+    ? await pausePlayback(interaction.guildId)
+    : false;
+
+  if (paused && interaction.guildId) {
+    pausedGuilds.add(interaction.guildId);
+  }
+
+  await interaction.reply(paused ? '⏸️ Reproducción pausada' : 'No hay nada sonando.');
+};
+
+const executeResumeCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  const resumed = interaction.guildId
+    ? await resumePlayback(interaction.guildId)
+    : false;
+
+  if (resumed && interaction.guildId) {
+    pausedGuilds.delete(interaction.guildId);
+  }
+
+  await interaction.reply(resumed ? '▶️ Reproducción reanudada' : 'No hay reproducción pausada.');
+};
+
+const executeSkipCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  const skipped = interaction.guildId
+    ? await skipPlayback(interaction.guildId)
+    : false;
+
+  if (interaction.guildId) {
+    pausedGuilds.delete(interaction.guildId);
+  }
+
+  await interaction.reply(
+    skipped ? '⏭️ Pista saltada' : 'No hay pista activa para saltar.',
+  );
+};
+
+const executeStopCommand = async (
+  interaction: ChatInputCommandInteraction,
+  pausedGuilds: Set<string>,
+) => {
+  const stopped = interaction.guildId
+    ? await stopPlayback(interaction.guildId)
+    : false;
+
+  if (interaction.guildId) {
+    pausedGuilds.delete(interaction.guildId);
+  }
+
+  await interaction.reply(
+    stopped
+      ? '⏹️ Reproducción detenida y cola vaciada'
+      : 'No hay nada reproduciéndose.',
+  );
+};
+
+const executeVolumeCommand = async (interaction: ChatInputCommandInteraction) => {
+  if (!interaction.guildId) {
+    throw new Error('Este comando solo funciona dentro de un servidor.');
+  }
+
+  const percent = interaction.options.getInteger('percent', true);
+  const changed = await setPlaybackVolume(interaction.guildId, percent);
+
+  await interaction.reply(
+    changed
+      ? `🔊 Volumen ajustado a **${percent}%**`
+      : 'No hay una sesión activa para cambiar el volumen.',
+  );
+};
+
+const executeNowPlayingCommand = async (interaction: ChatInputCommandInteraction) => {
+  if (!interaction.guildId) {
+    throw new Error('Este comando solo funciona dentro de un servidor.');
+  }
+
+  const track = getNowPlaying(interaction.guildId);
+  await interaction.reply(
+    track
+      ? `🎶 Sonando ahora: **${track.title}**`
+      : 'No hay nada reproduciéndose en este momento.',
+  );
+};
+
+const createSongerSlashCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
+  id: 'atlas-songer:command',
   data: new SlashCommandBuilder()
-    .setName('pause')
-    .setDescription('Pausa la reproducción actual'),
-  execute: async (interaction) => {
-    const paused = interaction.guildId
-      ? await pausePlayback(interaction.guildId)
-      : false;
-
-    if (paused && interaction.guildId) {
-      pausedGuilds.add(interaction.guildId);
-    }
-
-    await interaction.reply(paused ? '⏸️ Reproducción pausada' : 'No hay nada sonando.');
-  },
-});
-
-const createResumeCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:resume',
-  data: new SlashCommandBuilder()
-    .setName('resume')
-    .setDescription('Reanuda la reproducción actual'),
-  execute: async (interaction) => {
-    const resumed = interaction.guildId
-      ? await resumePlayback(interaction.guildId)
-      : false;
-
-    if (resumed && interaction.guildId) {
-      pausedGuilds.delete(interaction.guildId);
-    }
-
-    await interaction.reply(resumed ? '▶️ Reproducción reanudada' : 'No hay reproducción pausada.');
-  },
-});
-
-const createStopCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:stop',
-  data: new SlashCommandBuilder()
-    .setName('stop')
-    .setDescription('Detiene la reproducción y vacía la cola'),
-  execute: async (interaction) => {
-    const stopped = interaction.guildId
-      ? await stopPlayback(interaction.guildId)
-      : false;
-
-    if (interaction.guildId) {
-      pausedGuilds.delete(interaction.guildId);
-    }
-
-    await interaction.reply(
-      stopped
-        ? '⏹️ Reproducción detenida y cola vaciada'
-        : 'No hay nada reproduciéndose.',
-    );
-  },
-});
-
-const createSkipCommand = (pausedGuilds: Set<string>): SlashCommandHandler => ({
-  id: 'atlas-songer:skip',
-  data: new SlashCommandBuilder()
-    .setName('skip')
-    .setDescription('Salta a la siguiente pista'),
-  execute: async (interaction) => {
-    const skipped = interaction.guildId
-      ? await skipPlayback(interaction.guildId)
-      : false;
-
-    if (interaction.guildId) {
-      pausedGuilds.delete(interaction.guildId);
-    }
-
-    await interaction.reply(
-      skipped ? '⏭️ Pista saltada' : 'No hay pista activa para saltar.',
-    );
-  },
-});
-
-const createVolumeCommand = (): SlashCommandHandler => ({
-  id: 'atlas-songer:volume',
-  data: new SlashCommandBuilder()
-    .setName('volume')
-    .setDescription('Cambia el volumen del reproductor')
-    .addIntegerOption((option) =>
-      option
-        .setName('percent')
-        .setDescription('Volumen entre 0 y 200')
-        .setMinValue(0)
-        .setMaxValue(200)
-        .setRequired(true),
+    .setName(SONGER_COMMAND_NAME)
+    .setDescription('Comandos musicales de Atlas')
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('join')
+        .setDescription('Atlas entra al canal de voz'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('leave')
+        .setDescription('Atlas sale del canal de voz'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('play')
+        .setDescription('Reproduce una URL, playlist o búsqueda')
+        .addStringOption((option) =>
+          option
+            .setName('source')
+            .setDescription('URL, playlist o texto de búsqueda')
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('pause')
+        .setDescription('Pausa la reproducción actual'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('resume')
+        .setDescription('Reanuda la reproducción actual'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('skip')
+        .setDescription('Salta a la siguiente pista'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('stop')
+        .setDescription('Detiene la reproducción y vacía la cola'),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('volume')
+        .setDescription('Cambia el volumen del reproductor')
+        .addIntegerOption((option) =>
+          option
+            .setName('percent')
+            .setDescription('Volumen entre 0 y 200')
+            .setMinValue(0)
+            .setMaxValue(200)
+            .setRequired(true),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('nowplaying')
+        .setDescription('Muestra la pista actual'),
     ),
   execute: async (interaction) => {
-    if (!interaction.guildId) {
-      throw new Error('Este comando solo funciona dentro de un servidor.');
+    const subcommand = interaction.options.getSubcommand(true) as SongerSubcommand;
+
+    switch (subcommand) {
+      case 'join':
+        await executeJoinCommand(interaction, pausedGuilds);
+        return;
+      case 'leave':
+        await executeLeaveCommand(interaction, pausedGuilds);
+        return;
+      case 'play':
+        await executePlayCommand(interaction, pausedGuilds);
+        return;
+      case 'pause':
+        await executePauseCommand(interaction, pausedGuilds);
+        return;
+      case 'resume':
+        await executeResumeCommand(interaction, pausedGuilds);
+        return;
+      case 'skip':
+        await executeSkipCommand(interaction, pausedGuilds);
+        return;
+      case 'stop':
+        await executeStopCommand(interaction, pausedGuilds);
+        return;
+      case 'volume':
+        await executeVolumeCommand(interaction);
+        return;
+      case 'nowplaying':
+        await executeNowPlayingCommand(interaction);
+        return;
+      default:
+        throw new Error(`Subcomando no soportado: ${subcommand}`);
     }
-
-    const percent = interaction.options.getInteger('percent', true);
-    const changed = await setPlaybackVolume(interaction.guildId, percent);
-
-    await interaction.reply(
-      changed
-        ? `🔊 Volumen ajustado a **${percent}%**`
-        : 'No hay una sesión activa para cambiar el volumen.',
-    );
-  },
-});
-
-const createNowPlayingCommand = (): SlashCommandHandler => ({
-  id: 'atlas-songer:nowplaying',
-  data: new SlashCommandBuilder()
-    .setName('nowplaying')
-    .setDescription('Muestra la pista actual'),
-  execute: async (interaction) => {
-    if (!interaction.guildId) {
-      throw new Error('Este comando solo funciona dentro de un servidor.');
-    }
-
-    const track = getNowPlaying(interaction.guildId);
-    await interaction.reply(
-      track
-        ? `🎶 Sonando ahora: **${track.title}**`
-        : 'No hay nada reproduciéndose en este momento.',
-    );
   },
 });
 
@@ -345,7 +412,7 @@ const createPlaylistModeButton = (pausedGuilds: Set<string>): ButtonHandler => (
 
 const createTogglePauseButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:toggle-pause',
-  customId: 'queue_toggle_pause',
+  customId: SONGER_COMPONENT_IDS.togglePause,
   execute: async (interaction) => {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -403,7 +470,7 @@ const createTogglePauseButton = (pausedGuilds: Set<string>): ButtonHandler => ({
 
 const createNextButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:queue-next',
-  customId: 'queue_next',
+  customId: SONGER_COMPONENT_IDS.next,
   execute: async (interaction) => {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -436,7 +503,7 @@ const createNextButton = (pausedGuilds: Set<string>): ButtonHandler => ({
 
 const createShuffleButton = (): ButtonHandler => ({
   id: 'atlas-songer:queue-shuffle',
-  customId: 'queue_shuffle',
+  customId: SONGER_COMPONENT_IDS.shuffle,
   execute: async (interaction) => {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -460,7 +527,7 @@ const createShuffleButton = (): ButtonHandler => ({
 
 const createStopButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:queue-stop',
-  customId: 'queue_stop',
+  customId: SONGER_COMPONENT_IDS.stop,
   execute: async (interaction) => {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -493,7 +560,7 @@ const createStopButton = (pausedGuilds: Set<string>): ButtonHandler => ({
 
 const createLeaveButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:queue-leave',
-  customId: 'queue_leave',
+  customId: SONGER_COMPONENT_IDS.leave,
   execute: async (interaction) => {
     if (!interaction.guildId) {
       await interaction.reply({
@@ -525,26 +592,6 @@ export const createAtlasSongerModule = (
   options: AtlasSongerModuleOptions,
 ): AtlasModule => {
   const pausedGuilds = new Set<string>();
-  const slashCommands = [
-    createPingCommand(),
-    createJoinCommand(pausedGuilds),
-    createLeaveCommand(pausedGuilds),
-    createPlayCommand(pausedGuilds),
-    createPauseCommand(pausedGuilds),
-    createResumeCommand(pausedGuilds),
-    createStopCommand(pausedGuilds),
-    createSkipCommand(pausedGuilds),
-    createVolumeCommand(),
-    createNowPlayingCommand(),
-  ];
-  const buttonHandlers = [
-    createPlaylistModeButton(pausedGuilds),
-    createTogglePauseButton(pausedGuilds),
-    createNextButton(pausedGuilds),
-    createShuffleButton(),
-    createStopButton(pausedGuilds),
-    createLeaveButton(pausedGuilds),
-  ];
 
   return {
     id: 'atlas-songer',
@@ -555,7 +602,14 @@ export const createAtlasSongerModule = (
       initShoukaku(client, options.lavalink);
       logger.info('Shoukaku inicializado.');
     },
-    slashCommands,
-    buttonHandlers,
+    slashCommands: [createSongerSlashCommand(pausedGuilds)],
+    buttonHandlers: [
+      createPlaylistModeButton(pausedGuilds),
+      createTogglePauseButton(pausedGuilds),
+      createNextButton(pausedGuilds),
+      createShuffleButton(),
+      createStopButton(pausedGuilds),
+      createLeaveButton(pausedGuilds),
+    ],
   };
 };

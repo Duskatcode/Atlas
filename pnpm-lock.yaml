@@ -36,9 +36,6 @@ importers:
       '@atlas/core':
         specifier: workspace:*
         version: link:../../packages/atlas-core
-      '@atlas/creator':
-        specifier: workspace:*
-        version: link:../../packages/atlas-creator
       '@atlas/shared':
         specifier: workspace:*
         version: link:../../packages/atlas-shared
