@@ -5,6 +5,7 @@ export const buildCreatorCommand = (): RESTPostAPIChatInputApplicationCommandsJS
   new SlashCommandBuilder()
     .setName('creator')
     .setDescription('Herramientas de estructura y plantillas para comunidades')
+    .setDMPermission(false)
     .addSubcommand((subcommand) =>
       subcommand
         .setName('templates')
@@ -24,6 +25,23 @@ export const buildCreatorCommand = (): RESTPostAPIChatInputApplicationCommandsJS
           option
             .setName('community_name')
             .setDescription('Nombre de comunidad para personalizar el preview')
+            .setRequired(false),
+        ),
+    )
+    .addSubcommand((subcommand) =>
+      subcommand
+        .setName('apply')
+        .setDescription('Aplica de forma segura la plantilla en el servidor')
+        .addStringOption((option) =>
+          option
+            .setName('template')
+            .setDescription('ID de plantilla (ejemplo: basic-community)')
+            .setRequired(true),
+        )
+        .addStringOption((option) =>
+          option
+            .setName('community_name')
+            .setDescription('Nombre de comunidad para personalizar el apply')
             .setRequired(false),
         ),
     )

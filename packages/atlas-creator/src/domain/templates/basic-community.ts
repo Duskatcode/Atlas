@@ -22,12 +22,27 @@ export const basicCommunityTemplate: CreatorTemplate = {
         {
           name: `${communityName} Admin`,
           reason: 'Rol administrativo principal de la comunidad.',
-          permissions: ['Administrator'],
+          permissions: [
+            'ManageGuild',
+            'ManageRoles',
+            'ManageChannels',
+            'ManageMessages',
+            'ModerateMembers',
+            'MoveMembers',
+            'MuteMembers',
+            'DeafenMembers',
+          ],
         },
         {
           name: 'Moderator',
           reason: 'Moderación diaria del servidor.',
-          permissions: ['ManageMessages', 'MuteMembers', 'KickMembers'],
+          permissions: [
+            'ManageMessages',
+            'ModerateMembers',
+            'MuteMembers',
+            'MoveMembers',
+            'KickMembers',
+          ],
         },
         {
           name: 'Member',

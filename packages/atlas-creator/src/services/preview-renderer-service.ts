@@ -5,7 +5,14 @@ import { clampPreviewMessage } from '../infra/preview-output.js';
 const toBulletLines = (items: string[]): string[] =>
   items.length > 0 ? items.map((item) => `- ${item}`) : ['- (ninguno)'];
 
-export const renderPreviewPlan = (plan: CreatorChangePlan): string => {
+interface RenderPreviewPlanOptions {
+  maxLength?: number;
+}
+
+export const renderPreviewPlan = (
+  plan: CreatorChangePlan,
+  options?: RenderPreviewPlanOptions,
+): string => {
   const roleLines = toBulletLines(
     plan.rolesToCreate.map(
       (role) =>
@@ -44,5 +51,8 @@ export const renderPreviewPlan = (plan: CreatorChangePlan): string => {
     ...warningLines,
   ].join('\n');
 
-  return clampPreviewMessage(content, CREATOR_PREVIEW_MESSAGE_LIMIT);
+  return clampPreviewMessage(
+    content,
+    options?.maxLength ?? CREATOR_PREVIEW_MESSAGE_LIMIT,
+  );
 };
