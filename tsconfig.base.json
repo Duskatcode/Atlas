@@ -12,6 +12,7 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
+      "@atlas/creator": ["packages/atlas-creator/src/index.ts"],
       "@atlas/core": ["packages/atlas-core/src/index.ts"],
       "@atlas/shared": ["packages/atlas-shared/src/index.ts"],
       "@atlas/songer": ["packages/atlas-songer/src/index.ts"],

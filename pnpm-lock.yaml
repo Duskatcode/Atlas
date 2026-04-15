@@ -36,6 +36,9 @@ importers:
       '@atlas/core':
         specifier: workspace:*
         version: link:../../packages/atlas-core
+      '@atlas/creator':
+        specifier: workspace:*
+        version: link:../../packages/atlas-creator
       '@atlas/shared':
         specifier: workspace:*
         version: link:../../packages/atlas-shared
@@ -70,6 +73,15 @@ importers:
       '@atlas/shared':
         specifier: workspace:*
         version: link:../atlas-shared
+      '@atlas/types':
+        specifier: workspace:*
+        version: link:../atlas-types
+      discord.js:
+        specifier: ^14.25.1
+        version: 14.25.1
+
+  packages/atlas-creator:
+    dependencies:
       '@atlas/types':
         specifier: workspace:*
         version: link:../atlas-types

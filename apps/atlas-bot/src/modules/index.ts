@@ -1,10 +1,10 @@
 import { createModuleFlagConfig, createModuleFlagSourceFromEnv } from '@atlas/shared';
+import { createAtlasCreatorModule } from '@atlas/creator';
 import { createAtlasSongerModule } from '@atlas/songer';
 import type { AtlasModule, AtlasModuleFlags } from '@atlas/types';
 
 import { env } from '../config/index.js';
 
-import { createAtlasCreatorPlaceholderModule } from './atlas-creator-placeholder.js';
 export const createLocalModules = (): AtlasModule[] => [
   createAtlasSongerModule({
     lavalink: {
@@ -13,7 +13,7 @@ export const createLocalModules = (): AtlasModule[] => [
       password: env.LAVALINK_PASSWORD,
     },
   }),
-  createAtlasCreatorPlaceholderModule(),
+  createAtlasCreatorModule(),
 ];
 
 export const createRuntimeModuleFlags = (

@@ -1,0 +1,2 @@
+export const DEFAULT_CREATOR_COMMUNITY_NAME = 'My Community';
+export const CREATOR_PREVIEW_MESSAGE_LIMIT = 1900;

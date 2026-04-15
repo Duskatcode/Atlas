@@ -11,6 +11,7 @@
     { "path": "../../packages/atlas-types" },
     { "path": "../../packages/atlas-shared" },
     { "path": "../../packages/atlas-core" },
+    { "path": "../../packages/atlas-creator" },
     { "path": "../../packages/atlas-songer" }
   ]
 }
