@@ -1,6 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import { Guild, GuildMember, PermissionsBitField } from 'discord.js';
 import { getShoukaku } from '../lavalink/shoukaku.js';
-import { randomUUID } from 'node:crypto';
+
 type QueueTrack = {
   encoded: string;
   title: string;
@@ -67,13 +68,6 @@ async function resolveTracks(source: string, requestedBy?: string): Promise<Queu
 
   const result: any = await node.rest.resolve(normalizeIdentifier(source));
 
-  console.log('loadType:', result.loadType);
-
-  if (result.loadType === 'playlist') {
-    console.log('playlist name:', result.data.info?.name);
-    console.log('tracks returned by Lavalink:', result.data.tracks?.length);
-  }
-
   switch (result.loadType) {
     case 'track':
       return [trackFromRaw(result.data, requestedBy)];
@@ -85,6 +79,7 @@ async function resolveTracks(source: string, requestedBy?: string): Promise<Queu
       if (!result.data.length) {
         throw new Error('No encontré resultados para esa búsqueda.');
       }
+
       return [trackFromRaw(result.data[0], requestedBy)];
 
     case 'empty':
@@ -143,7 +138,6 @@ async function ensureSession(guild: Guild, member: GuildMember) {
   }
 
   const shoukaku = getShoukaku();
-
   const player = await shoukaku.joinVoiceChannel({
     guildId: guild.id,
     channelId: voiceChannel.id,
@@ -159,6 +153,7 @@ async function ensureSession(guild: Guild, member: GuildMember) {
   player.on('end', async () => {
     const currentSession = sessions.get(guild.id);
     if (!currentSession) return;
+
     currentSession.current = null;
     await playNext(guild.id);
   });
@@ -166,6 +161,7 @@ async function ensureSession(guild: Guild, member: GuildMember) {
   player.on('exception', async () => {
     const currentSession = sessions.get(guild.id);
     if (!currentSession) return;
+
     currentSession.current = null;
     await playNext(guild.id);
   });
@@ -173,6 +169,7 @@ async function ensureSession(guild: Guild, member: GuildMember) {
   player.on('stuck', async () => {
     const currentSession = sessions.get(guild.id);
     if (!currentSession) return;
+
     currentSession.current = null;
     await playNext(guild.id);
   });
@@ -205,7 +202,6 @@ export async function prepareSource(
   await ensureSession(guild, member);
   const tracks = await resolveTracks(source, requestedBy);
 
-  // Una sola pista: entra normal directo
   if (tracks.length <= 1) {
     const session = sessions.get(guild.id)!;
     session.queue.push(...tracks);
@@ -220,7 +216,6 @@ export async function prepareSource(
     };
   }
 
-  // Varias pistas: guardar selección pendiente
   const selectionId = createSelectionId();
 
   pendingSelections.set(selectionId, {

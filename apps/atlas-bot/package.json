@@ -10,16 +10,18 @@
     "deploy:commands": "tsx src/deploy-commands.ts"
   },
   "dependencies": {
-    "@discordjs/voice": "^0.19.2",
+    "@atlas/core": "workspace:*",
+    "@atlas/creator": "workspace:*",
+    "@atlas/shared": "workspace:*",
+    "@atlas/songer": "workspace:*",
+    "@atlas/types": "workspace:*",
     "discord.js": "^14.25.1",
     "dotenv": "^16.4.5",
-    "opusscript": "^0.1.1",
-    "shoukaku": "^4.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
     "tsx": "^4.19.3",
-    "typescript": "^5.8.3"
+    "typescript": "^6.0.2"
   }
 }
