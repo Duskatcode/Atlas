@@ -7,7 +7,7 @@ import {
   SlashCommandBuilder,
 } from 'discord.js';
 
-import { initShoukaku } from '../lavalink/shoukaku.js';
+import { initShoukaku } from './lavalink/shoukaku.js';
 import {
   applyPendingSelection,
   getNowPlaying,
@@ -21,7 +21,8 @@ import {
   shuffleQueue,
   skipPlayback,
   stopPlayback,
-} from '../music/lavalink-manager.js';
+} from './music/lavalink-manager.js';
+import type { AtlasSongerModuleOptions } from './types.js';
 
 const playlistModePattern = /^playlist_mode:(shuffle|normal):(.+)$/;
 
@@ -545,7 +546,9 @@ const createLeaveButton: ButtonHandlerFactory = (pausedGuilds) => ({
   },
 });
 
-export const createAtlasSongerModule = (): AtlasModule => {
+export const createAtlasSongerModule = (
+  options: AtlasSongerModuleOptions,
+): AtlasModule => {
   const pausedGuilds = new Set<string>();
 
   const slashCommands: SlashCommandHandler[] = [
@@ -576,7 +579,7 @@ export const createAtlasSongerModule = (): AtlasModule => {
     description: 'Base musical de Atlas.',
     defaultEnabled: true,
     setup: ({ client, logger }) => {
-      initShoukaku(client);
+      initShoukaku(client, options.lavalink);
       logger.info('Shoukaku inicializado.');
     },
     slashCommands,

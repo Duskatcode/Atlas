@@ -11,13 +11,11 @@
   },
   "dependencies": {
     "@atlas/core": "workspace:*",
+    "@atlas/songer": "workspace:*",
     "@atlas/shared": "workspace:*",
     "@atlas/types": "workspace:*",
-    "@discordjs/voice": "^0.19.2",
     "discord.js": "^14.25.1",
     "dotenv": "^16.4.5",
-    "opusscript": "^0.1.1",
-    "shoukaku": "^4.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
