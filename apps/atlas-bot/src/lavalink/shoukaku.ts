@@ -1,6 +1,6 @@
 import { Client } from 'discord.js';
 import { Connectors, Shoukaku } from 'shoukaku';
-import { env } from '../config.js';
+import { env } from '../config/index.js';
 
 let shoukaku: Shoukaku | null = null;
 

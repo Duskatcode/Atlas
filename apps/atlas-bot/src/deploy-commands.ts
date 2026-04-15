@@ -1,5 +1,5 @@
 import { REST, Routes } from 'discord.js';
-import { env } from './config.js';
+import { env } from './config/index.js';
 import { commands } from './commands.js';
 
 const rest = new REST({ version: '10' }).setToken(env.DISCORD_TOKEN);
