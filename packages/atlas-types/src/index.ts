@@ -83,6 +83,13 @@ export interface AtlasModule {
   setup?: (context: AtlasModuleContext) => Promise<void> | void;
 }
 
+export type AtlasModuleLoaderResult = AtlasModule | AtlasModule[] | null | undefined;
+export type AtlasModuleLoader =
+  | (() => AtlasModuleLoaderResult | Promise<AtlasModuleLoaderResult>)
+  | {
+      load: () => AtlasModuleLoaderResult | Promise<AtlasModuleLoaderResult>;
+    };
+
 export interface AtlasModuleSummary {
   id: AtlasModuleId;
   name: string;

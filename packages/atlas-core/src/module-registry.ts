@@ -3,6 +3,8 @@ import type {
   AtlasLogger,
   AtlasModule,
   AtlasModuleContext,
+  AtlasModuleLoader,
+  AtlasModuleLoaderResult,
   AtlasModuleFlags,
   AtlasModuleSummary,
   ButtonHandler,
@@ -67,6 +69,22 @@ export class AtlasModuleRegistry {
       : `Módulo "${module.name}" deshabilitado por flags.`;
 
     this.logger.info(message);
+  }
+
+  registerModules(modules: Iterable<AtlasModule>): void {
+    for (const module of modules) {
+      this.registerModule(module);
+    }
+  }
+
+  async loadModules(loaders: Iterable<AtlasModuleLoader>): Promise<void> {
+    for (const loader of loaders) {
+      const resolved = await Promise.resolve(
+        typeof loader === 'function' ? loader() : loader.load(),
+      );
+      const modules = normalizeLoaderResult(resolved);
+      this.registerModules(modules);
+    }
   }
 
   async initializeModules(): Promise<void> {
@@ -164,3 +182,11 @@ export class AtlasModuleRegistry {
     };
   }
 }
+
+const normalizeLoaderResult = (result: AtlasModuleLoaderResult): AtlasModule[] => {
+  if (!result) {
+    return [];
+  }
+
+  return Array.isArray(result) ? result : [result];
+};

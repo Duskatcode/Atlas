@@ -1,5 +1,9 @@
 import { AtlasModuleRegistry } from '@atlas/core';
-import { createConsoleLogger, createModuleFlagConfig } from '@atlas/shared';
+import {
+  createConsoleLogger,
+  createModuleFlagConfig,
+  createModuleFlagSourceFromEnv,
+} from '@atlas/shared';
 import type { AtlasModule } from '@atlas/types';
 import type { Client } from 'discord.js';
 import { env } from '../config.js';
@@ -20,10 +24,7 @@ const placeholderModules: AtlasModule[] = [
 ];
 
 export const bootstrapModuleRegistry = (client: Client): AtlasModuleRegistry => {
-  const flags = createModuleFlagConfig({
-    'atlas-songer': env.ENABLE_ATLAS_SONGER,
-    'atlas-creator': env.ENABLE_ATLAS_CREATOR,
-  });
+  const flags = createModuleFlagConfig(createModuleFlagSourceFromEnv(env));
 
   const registry = new AtlasModuleRegistry({
     client,
@@ -31,9 +32,7 @@ export const bootstrapModuleRegistry = (client: Client): AtlasModuleRegistry => 
     logger: createConsoleLogger('atlas:registry'),
   });
 
-  for (const definition of placeholderModules) {
-    registry.registerModule(definition);
-  }
+  registry.registerModules(placeholderModules);
 
   return registry;
 };

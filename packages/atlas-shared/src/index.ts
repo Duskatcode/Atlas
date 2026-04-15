@@ -59,7 +59,7 @@ export const createModuleFlagConfig = (
 };
 
 export const createModuleFlagSourceFromEnv = (
-  env: NodeJS.ProcessEnv,
+  env: Record<string, ModuleFlagValue>,
 ): ModuleFlagSource => {
   const entries = Object.entries(MODULE_FLAG_ENV_KEYS).map(([moduleId, envKey]) => [
     moduleId,
