@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { Guild, GuildMember, PermissionsBitField } from 'discord.js';
 import { getShoukaku } from '../lavalink/shoukaku.js';
 
+export const PENDING_SELECTION_TTL_MS = 2 * 60 * 1000;
+
 type QueueTrack = {
   encoded: string;
   title: string;
@@ -13,6 +15,7 @@ type GuildSession = {
   player: any;
   queue: QueueTrack[];
   current: QueueTrack | null;
+  voiceChannelId: string;
 };
 
 type PendingSelection = {
@@ -20,7 +23,14 @@ type PendingSelection = {
   userId: string;
   tracks: QueueTrack[];
   firstTitle: string;
+  expiresAt: number;
 };
+
+export interface GuildSessionSnapshot {
+  voiceChannelId: string;
+  queueSize: number;
+  hasCurrent: boolean;
+}
 
 const sessions = new Map<string, GuildSession>();
 const pendingSelections = new Map<string, PendingSelection>();
@@ -54,16 +64,72 @@ function shuffleArray<T>(items: T[]) {
   return copy;
 }
 
-function createSelectionId() {
-  return randomUUID();
+function getShoukakuOrThrow() {
+  try {
+    return getShoukaku();
+  } catch {
+    throw new Error('El reproductor musical no está listo en este momento. Intenta de nuevo en unos segundos.');
+  }
+}
+
+function removePendingSelection(selectionId: string) {
+  return pendingSelections.delete(selectionId);
+}
+
+function clearGuildPendingSelections(guildId: string) {
+  for (const [selectionId, pending] of pendingSelections.entries()) {
+    if (pending.guildId === guildId) {
+      removePendingSelection(selectionId);
+    }
+  }
+}
+
+function clearGuildSession(guildId: string) {
+  sessions.delete(guildId);
+  clearGuildPendingSelections(guildId);
+}
+
+function isPendingSelectionExpired(pending: PendingSelection, now = Date.now()) {
+  return pending.expiresAt <= now;
+}
+
+export function clearExpiredPendingSelections(now = Date.now()) {
+  let removed = 0;
+
+  for (const [selectionId, pending] of pendingSelections.entries()) {
+    if (isPendingSelectionExpired(pending, now)) {
+      pendingSelections.delete(selectionId);
+      removed += 1;
+    }
+  }
+
+  return removed;
+}
+
+export function expirePendingSelection(selectionId: string) {
+  return removePendingSelection(selectionId);
+}
+
+export function getGuildSessionSnapshot(guildId: string): GuildSessionSnapshot | null {
+  const session = sessions.get(guildId);
+
+  if (!session) {
+    return null;
+  }
+
+  return {
+    voiceChannelId: session.voiceChannelId,
+    queueSize: session.queue.length,
+    hasCurrent: session.current !== null,
+  };
 }
 
 async function resolveTracks(source: string, requestedBy?: string): Promise<QueueTrack[]> {
-  const shoukaku = getShoukaku();
+  const shoukaku = getShoukakuOrThrow();
   const node = shoukaku.getIdealNode();
 
   if (!node) {
-    throw new Error('No hay nodos Lavalink disponibles.');
+    throw new Error('Lavalink no está disponible en este momento. Intenta de nuevo más tarde.');
   }
 
   const result: any = await node.rest.resolve(normalizeIdentifier(source));
@@ -98,23 +164,42 @@ async function playNext(guildId: string) {
   if (!session) return false;
   if (session.current) return false;
 
-  const next = session.queue.shift();
-  if (!next) return false;
+  let next = session.queue.shift();
 
-  session.current = next;
+  while (next) {
+    session.current = next;
 
-  await session.player.playTrack({
-    track: { encoded: next.encoded },
-  });
+    try {
+      await session.player.playTrack({
+        track: { encoded: next.encoded },
+      });
 
-  return true;
+      return true;
+    } catch {
+      session.current = null;
+      next = session.queue.shift();
+    }
+  }
+
+  throw new Error('No se pudo iniciar la reproducción. Intenta otra pista o vuelve a conectar Atlas.');
+}
+
+function getConnectedChannelName(guild: Guild, channelId: string) {
+  const channel = guild.channels.cache.get(channelId);
+  return channel?.isVoiceBased() ? channel.name : null;
 }
 
 async function ensureSession(guild: Guild, member: GuildMember) {
+  clearExpiredPendingSelections();
+
   const voiceChannel = member.voice.channel;
 
   if (!voiceChannel) {
     throw new Error('Debes estar dentro de un canal de voz.');
+  }
+
+  if (!guild.client.user) {
+    throw new Error('Atlas aún no está listo para conectarse a voz.');
   }
 
   const me = await guild.members.fetch(guild.client.user.id);
@@ -133,11 +218,37 @@ async function ensureSession(guild: Guild, member: GuildMember) {
   }
 
   const existing = sessions.get(guild.id);
+  const botVoiceChannelId = me.voice.channelId;
+
   if (existing) {
-    return existing;
+    if (!botVoiceChannelId) {
+      clearGuildSession(guild.id);
+    } else {
+      existing.voiceChannelId = botVoiceChannelId;
+
+      if (existing.voiceChannelId === voiceChannel.id) {
+        return existing;
+      }
+
+      const connectedChannelName = getConnectedChannelName(guild, existing.voiceChannelId);
+      throw new Error(
+        connectedChannelName
+          ? `Atlas ya está conectado a **${connectedChannelName}**. Únete a ese canal o usa /songer leave desde allí.`
+          : 'Atlas ya está conectado a otro canal de voz. Únete a ese canal o usa /songer leave desde allí.',
+      );
+    }
   }
 
-  const shoukaku = getShoukaku();
+  if (!existing && botVoiceChannelId && botVoiceChannelId !== voiceChannel.id) {
+    const connectedChannelName = getConnectedChannelName(guild, botVoiceChannelId);
+    throw new Error(
+      connectedChannelName
+        ? `Atlas ya está conectado a **${connectedChannelName}**. Únete a ese canal o usa /songer leave desde allí.`
+        : 'Atlas ya está conectado a otro canal de voz. Únete a ese canal o usa /songer leave desde allí.',
+    );
+  }
+
+  const shoukaku = getShoukakuOrThrow();
   const player = await shoukaku.joinVoiceChannel({
     guildId: guild.id,
     channelId: voiceChannel.id,
@@ -148,6 +259,7 @@ async function ensureSession(guild: Guild, member: GuildMember) {
     player,
     queue: [],
     current: null,
+    voiceChannelId: voiceChannel.id,
   };
 
   player.on('end', async () => {
@@ -155,7 +267,9 @@ async function ensureSession(guild: Guild, member: GuildMember) {
     if (!currentSession) return;
 
     currentSession.current = null;
-    await playNext(guild.id);
+    await playNext(guild.id).catch(() => {
+      currentSession.current = null;
+    });
   });
 
   player.on('exception', async () => {
@@ -163,7 +277,9 @@ async function ensureSession(guild: Guild, member: GuildMember) {
     if (!currentSession) return;
 
     currentSession.current = null;
-    await playNext(guild.id);
+    await playNext(guild.id).catch(() => {
+      currentSession.current = null;
+    });
   });
 
   player.on('stuck', async () => {
@@ -171,11 +287,36 @@ async function ensureSession(guild: Guild, member: GuildMember) {
     if (!currentSession) return;
 
     currentSession.current = null;
-    await playNext(guild.id);
+    await playNext(guild.id).catch(() => {
+      currentSession.current = null;
+    });
   });
 
   sessions.set(guild.id, session);
   return session;
+}
+
+async function runSessionOperation(
+  guildId: string,
+  operation: (session: GuildSession) => Promise<void>,
+  options?: { allowWithoutCurrent?: boolean },
+) {
+  clearExpiredPendingSelections();
+
+  const session = sessions.get(guildId);
+  if (!session) return false;
+
+  if (!options?.allowWithoutCurrent && !session.current) {
+    return false;
+  }
+
+  try {
+    await operation(session);
+    return true;
+  } catch {
+    clearGuildSession(guildId);
+    throw new Error('La sesión musical quedó inconsistente. Usa /songer join para reconectar Atlas.');
+  }
 }
 
 export async function joinMemberVoice(guild: Guild, member: GuildMember) {
@@ -184,11 +325,19 @@ export async function joinMemberVoice(guild: Guild, member: GuildMember) {
 }
 
 export async function leaveVoice(guildId: string) {
-  const shoukaku = getShoukaku();
-  const existed = sessions.has(guildId);
+  clearExpiredPendingSelections();
 
-  await shoukaku.leaveVoiceChannel(guildId);
-  sessions.delete(guildId);
+  const existed = sessions.has(guildId);
+  clearGuildSession(guildId);
+
+  try {
+    const shoukaku = getShoukakuOrThrow();
+    await shoukaku.leaveVoiceChannel(guildId);
+  } catch {
+    if (existed) {
+      throw new Error('La sesión local fue limpiada, pero no pude cerrar la conexión de voz. Usa /songer join si necesitas reconectar Atlas.');
+    }
+  }
 
   return existed;
 }
@@ -199,37 +348,46 @@ export async function prepareSource(
   source: string,
   requestedBy?: string,
 ) {
+  clearExpiredPendingSelections();
+
   await ensureSession(guild, member);
   const tracks = await resolveTracks(source, requestedBy);
 
   if (tracks.length <= 1) {
-    const session = sessions.get(guild.id)!;
+    const session = sessions.get(guild.id);
+
+    if (!session) {
+      throw new Error('No pude crear una sesión de reproducción para este servidor.');
+    }
+
     session.queue.push(...tracks);
 
     const startedNow = await playNext(guild.id);
 
     return {
-      needsChoice: false,
+      needsChoice: false as const,
       added: tracks.length,
       startedNow,
       firstTitle: tracks[0]?.title ?? 'Sin título',
     };
   }
 
-  const selectionId = createSelectionId();
+  const selectionId = randomUUID();
 
   pendingSelections.set(selectionId, {
     guildId: guild.id,
     userId: member.id,
     tracks,
     firstTitle: tracks[0]?.title ?? 'Sin título',
+    expiresAt: Date.now() + PENDING_SELECTION_TTL_MS,
   });
 
   return {
-    needsChoice: true,
+    needsChoice: true as const,
     selectionId,
     added: tracks.length,
     firstTitle: tracks[0]?.title ?? 'Sin título',
+    expiresAt: Date.now() + PENDING_SELECTION_TTL_MS,
   };
 }
 
@@ -238,9 +396,16 @@ export async function applyPendingSelection(
   mode: 'shuffle' | 'normal',
   userId: string,
 ) {
+  clearExpiredPendingSelections();
+
   const pending = pendingSelections.get(selectionId);
 
   if (!pending) {
+    throw new Error('Esta selección ya no existe o expiró.');
+  }
+
+  if (isPendingSelectionExpired(pending)) {
+    removePendingSelection(selectionId);
     throw new Error('Esta selección ya no existe o expiró.');
   }
 
@@ -251,7 +416,7 @@ export async function applyPendingSelection(
   const session = sessions.get(pending.guildId);
 
   if (!session) {
-    pendingSelections.delete(selectionId);
+    removePendingSelection(selectionId);
     throw new Error('No hay sesión activa de reproducción.');
   }
 
@@ -261,7 +426,7 @@ export async function applyPendingSelection(
       : pending.tracks;
 
   session.queue.push(...finalTracks);
-  pendingSelections.delete(selectionId);
+  removePendingSelection(selectionId);
 
   const startedNow = await playNext(pending.guildId);
 
@@ -274,69 +439,67 @@ export async function applyPendingSelection(
 }
 
 export async function pausePlayback(guildId: string) {
-  const session = sessions.get(guildId);
-  if (!session) return false;
-
-  await session.player.setPaused(true);
-  return true;
+  return runSessionOperation(guildId, async (session) => {
+    await session.player.setPaused(true);
+  });
 }
 
 export async function resumePlayback(guildId: string) {
-  const session = sessions.get(guildId);
-  if (!session) return false;
-
-  await session.player.setPaused(false);
-  return true;
+  return runSessionOperation(guildId, async (session) => {
+    await session.player.setPaused(false);
+  });
 }
 
 export async function stopPlayback(guildId: string) {
-  const session = sessions.get(guildId);
-  if (!session) return false;
-
-  session.queue = [];
-  session.current = null;
-  await session.player.stopTrack();
-  return true;
+  return runSessionOperation(
+    guildId,
+    async (session) => {
+      session.queue = [];
+      session.current = null;
+      await session.player.stopTrack();
+    },
+    { allowWithoutCurrent: true },
+  );
 }
 
 export async function skipPlayback(guildId: string) {
-  const session = sessions.get(guildId);
-  if (!session) return false;
-
-  session.current = null;
-  await session.player.stopTrack();
-  return true;
+  return runSessionOperation(guildId, async (session) => {
+    session.current = null;
+    await session.player.stopTrack();
+  });
 }
 
 export async function setPlaybackVolume(guildId: string, percent: number) {
-  const session = sessions.get(guildId);
-  if (!session) return false;
-
-  await session.player.setGlobalVolume(percent);
-  return true;
+  return runSessionOperation(
+    guildId,
+    async (session) => {
+      await session.player.setGlobalVolume(percent);
+    },
+    { allowWithoutCurrent: true },
+  );
 }
 
 export function getNowPlaying(guildId: string) {
+  clearExpiredPendingSelections();
   const session = sessions.get(guildId);
   return session?.current ?? null;
 }
 
 export function getQueueSize(guildId: string) {
+  clearExpiredPendingSelections();
   const session = sessions.get(guildId);
   return session?.queue.length ?? 0;
 }
 
 export function shuffleQueue(guildId: string) {
+  clearExpiredPendingSelections();
+
   const session = sessions.get(guildId);
 
   if (!session || session.queue.length < 2) {
     return false;
   }
 
-  for (let i = session.queue.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [session.queue[i], session.queue[j]] = [session.queue[j], session.queue[i]];
-  }
-
+  session.queue = shuffleArray(session.queue);
   return true;
 }

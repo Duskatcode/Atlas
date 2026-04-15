@@ -4,11 +4,18 @@ import {
   ButtonBuilder,
   ButtonStyle,
   MessageFlags,
+  PermissionsBitField,
   SlashCommandBuilder,
+  type ButtonInteraction,
   type ChatInputCommandInteraction,
+  type Guild,
+  type GuildMember,
 } from 'discord.js';
 import {
+  PENDING_SELECTION_TTL_MS,
   applyPendingSelection,
+  expirePendingSelection,
+  getGuildSessionSnapshot,
   getNowPlaying,
   getQueueSize,
   joinMemberVoice,
@@ -38,6 +45,8 @@ type SongerSubcommand =
   | 'volume'
   | 'nowplaying';
 
+type SongerInteraction = ChatInputCommandInteraction | ButtonInteraction;
+
 const SONGER_COMMAND_NAME = 'songer';
 const SONGER_COMPONENT_PREFIX = 'songer';
 const SONGER_COMPONENT_IDS = {
@@ -51,6 +60,7 @@ const SONGER_COMPONENT_IDS = {
 } as const;
 
 const playlistModePattern = /^songer:playlist_mode:(shuffle|normal):(.+)$/;
+const pendingSelectionMinutes = Math.ceil(PENDING_SELECTION_TTL_MS / 60_000);
 
 const buildPlaybackControls = (pausedGuilds: Set<string>, guildId?: string) => {
   const toggleButton = new ButtonBuilder()
@@ -91,12 +101,97 @@ const buildPlaybackControls = (pausedGuilds: Set<string>, guildId?: string) => {
   );
 };
 
-const requireGuildMember = async (interaction: ChatInputCommandInteraction) => {
-  if (!interaction.guild) {
+const requireGuild = (interaction: SongerInteraction): Guild => {
+  if (!interaction.guild || !interaction.guildId) {
     throw new Error('Este comando solo funciona dentro de un servidor.');
   }
 
-  return interaction.guild.members.fetch(interaction.user.id);
+  return interaction.guild;
+};
+
+const requireGuildMember = async (interaction: SongerInteraction): Promise<GuildMember> => {
+  const guild = requireGuild(interaction);
+  return guild.members.fetch(interaction.user.id);
+};
+
+const getSessionChannelName = (guild: Guild, channelId: string) => {
+  const channel = guild.channels.cache.get(channelId);
+  return channel?.isVoiceBased() ? channel.name : null;
+};
+
+const requireVoiceAccess = async (
+  interaction: SongerInteraction,
+  options?: {
+    requireController?: boolean;
+    controllerAction?: string;
+  },
+) => {
+  const guild = requireGuild(interaction);
+  const member = await requireGuildMember(interaction);
+  const memberVoiceChannel = member.voice.channel;
+
+  if (!memberVoiceChannel) {
+    throw new Error('Debes estar dentro de un canal de voz para usar Songer.');
+  }
+
+  const session = getGuildSessionSnapshot(guild.id);
+  const botMember = guild.client.user
+    ? await guild.members.fetch(guild.client.user.id)
+    : null;
+  const botVoiceChannelId = botMember?.voice.channelId ?? session?.voiceChannelId ?? null;
+
+  if (botVoiceChannelId && botVoiceChannelId !== memberVoiceChannel.id) {
+    const channelName = getSessionChannelName(guild, botVoiceChannelId);
+    throw new Error(
+      channelName
+        ? `Debes estar en el mismo canal de voz que Atlas (**${channelName}**).`
+        : 'Debes estar en el mismo canal de voz que Atlas.',
+    );
+  }
+
+  if (options?.requireController && session) {
+    const listenerCount = memberVoiceChannel.members.filter((candidate) => !candidate.user.bot).size;
+    const canManage = member.permissions.has(PermissionsBitField.Flags.ManageGuild);
+
+    if (listenerCount > 1 && !canManage) {
+      throw new Error(
+        options.controllerAction
+          ? `Solo alguien con permisos de gestión puede ${options.controllerAction} mientras hay otras personas escuchando.`
+          : 'Solo alguien con permisos de gestión puede usar este control mientras hay otras personas escuchando.',
+      );
+    }
+  }
+
+  return {
+    guild,
+    member,
+    memberVoiceChannel,
+    session,
+  };
+};
+
+const schedulePendingSelectionExpiry = (
+  interaction: ChatInputCommandInteraction,
+  selectionId: string,
+) => {
+  const timer = setTimeout(async () => {
+    const expired = expirePendingSelection(selectionId);
+
+    if (!expired) {
+      return;
+    }
+
+    try {
+      await interaction.editReply({
+        content: `⏱️ La selección de playlist expiró tras ${pendingSelectionMinutes} minutos. Usa /songer play de nuevo si quieres cargarla.`,
+        components: [],
+      });
+    } catch {
+      // Best effort: si el mensaje ya cambió o la edición falla, la limpieza de estado ya ocurrió.
+    }
+  }, PENDING_SELECTION_TTL_MS);
+
+  timer.unref?.();
 };
 
 const executeJoinCommand = async (
@@ -105,14 +200,10 @@ const executeJoinCommand = async (
 ) => {
   await interaction.deferReply();
 
-  if (!interaction.guild) {
-    throw new Error('Este comando solo funciona dentro de un servidor.');
-  }
+  const { guild, member } = await requireVoiceAccess(interaction);
+  const channelName = await joinMemberVoice(guild, member);
 
-  const member = await requireGuildMember(interaction);
-  const channelName = await joinMemberVoice(interaction.guild, member);
-
-  pausedGuilds.delete(interaction.guild.id);
+  pausedGuilds.delete(guild.id);
 
   await interaction.editReply(`🎤 Atlas entró a **${channelName}**`);
 };
@@ -123,12 +214,13 @@ const executeLeaveCommand = async (
 ) => {
   await interaction.deferReply();
 
-  if (!interaction.guildId) {
-    throw new Error('Este comando solo funciona dentro de un servidor.');
-  }
+  const { guild } = await requireVoiceAccess(interaction, {
+    requireController: true,
+    controllerAction: 'desconectar a Atlas',
+  });
 
-  const left = await leaveVoice(interaction.guildId);
-  pausedGuilds.delete(interaction.guildId);
+  const left = await leaveVoice(guild.id);
+  pausedGuilds.delete(guild.id);
 
   await interaction.editReply(
     left ? '👋 Atlas salió del canal de voz' : 'Atlas no estaba conectado.',
@@ -141,14 +233,10 @@ const executePlayCommand = async (
 ) => {
   await interaction.deferReply();
 
-  if (!interaction.guild) {
-    throw new Error('Este comando solo funciona dentro de un servidor.');
-  }
-
-  const member = await requireGuildMember(interaction);
+  const { guild, member } = await requireVoiceAccess(interaction);
   const source = interaction.options.getString('source', true);
   const result = await prepareSource(
-    interaction.guild,
+    guild,
     member,
     source,
     interaction.user.username,
@@ -169,24 +257,23 @@ const executePlayCommand = async (
     );
 
     await interaction.editReply({
-      content: `📚 Detecté una playlist con **${result.added}** pistas. ¿Cómo quieres cargarla?`,
+      content: `📚 Detecté una playlist con **${result.added}** pistas. ¿Cómo quieres cargarla? Tienes **${pendingSelectionMinutes} min** para elegir.`,
       components: [row],
     });
 
+    schedulePendingSelectionExpiry(interaction, result.selectionId);
     return;
   }
 
-  if (interaction.guildId && result.startedNow) {
-    pausedGuilds.delete(interaction.guildId);
+  if (guild.id && result.startedNow) {
+    pausedGuilds.delete(guild.id);
   }
 
   await interaction.editReply({
     content: result.startedNow
       ? `▶️ Reproduciendo **${result.firstTitle}**`
       : `➕ Añadida a la cola: **${result.firstTitle}**`,
-    components: interaction.guildId
-      ? [buildPlaybackControls(pausedGuilds, interaction.guildId)]
-      : [],
+    components: [buildPlaybackControls(pausedGuilds, guild.id)],
   });
 };
 
@@ -194,12 +281,13 @@ const executePauseCommand = async (
   interaction: ChatInputCommandInteraction,
   pausedGuilds: Set<string>,
 ) => {
-  const paused = interaction.guildId
-    ? await pausePlayback(interaction.guildId)
-    : false;
+  const { guild } = await requireVoiceAccess(interaction);
+  const paused = await pausePlayback(guild.id);
 
-  if (paused && interaction.guildId) {
-    pausedGuilds.add(interaction.guildId);
+  if (paused) {
+    pausedGuilds.add(guild.id);
+  } else {
+    pausedGuilds.delete(guild.id);
   }
 
   await interaction.reply(paused ? '⏸️ Reproducción pausada' : 'No hay nada sonando.');
@@ -209,12 +297,11 @@ const executeResumeCommand = async (
   interaction: ChatInputCommandInteraction,
   pausedGuilds: Set<string>,
 ) => {
-  const resumed = interaction.guildId
-    ? await resumePlayback(interaction.guildId)
-    : false;
+  const { guild } = await requireVoiceAccess(interaction);
+  const resumed = await resumePlayback(guild.id);
 
-  if (resumed && interaction.guildId) {
-    pausedGuilds.delete(interaction.guildId);
+  if (resumed) {
+    pausedGuilds.delete(guild.id);
   }
 
   await interaction.reply(resumed ? '▶️ Reproducción reanudada' : 'No hay reproducción pausada.');
@@ -224,13 +311,13 @@ const executeSkipCommand = async (
   interaction: ChatInputCommandInteraction,
   pausedGuilds: Set<string>,
 ) => {
-  const skipped = interaction.guildId
-    ? await skipPlayback(interaction.guildId)
-    : false;
+  const { guild } = await requireVoiceAccess(interaction, {
+    requireController: true,
+    controllerAction: 'saltar la pista actual',
+  });
 
-  if (interaction.guildId) {
-    pausedGuilds.delete(interaction.guildId);
-  }
+  const skipped = await skipPlayback(guild.id);
+  pausedGuilds.delete(guild.id);
 
   await interaction.reply(
     skipped ? '⏭️ Pista saltada' : 'No hay pista activa para saltar.',
@@ -241,13 +328,13 @@ const executeStopCommand = async (
   interaction: ChatInputCommandInteraction,
   pausedGuilds: Set<string>,
 ) => {
-  const stopped = interaction.guildId
-    ? await stopPlayback(interaction.guildId)
-    : false;
+  const { guild } = await requireVoiceAccess(interaction, {
+    requireController: true,
+    controllerAction: 'detener la reproducción',
+  });
 
-  if (interaction.guildId) {
-    pausedGuilds.delete(interaction.guildId);
-  }
+  const stopped = await stopPlayback(guild.id);
+  pausedGuilds.delete(guild.id);
 
   await interaction.reply(
     stopped
@@ -257,12 +344,9 @@ const executeStopCommand = async (
 };
 
 const executeVolumeCommand = async (interaction: ChatInputCommandInteraction) => {
-  if (!interaction.guildId) {
-    throw new Error('Este comando solo funciona dentro de un servidor.');
-  }
-
+  const { guild } = await requireVoiceAccess(interaction);
   const percent = interaction.options.getInteger('percent', true);
-  const changed = await setPlaybackVolume(interaction.guildId, percent);
+  const changed = await setPlaybackVolume(guild.id, percent);
 
   await interaction.reply(
     changed
@@ -272,11 +356,9 @@ const executeVolumeCommand = async (interaction: ChatInputCommandInteraction) =>
 };
 
 const executeNowPlayingCommand = async (interaction: ChatInputCommandInteraction) => {
-  if (!interaction.guildId) {
-    throw new Error('Este comando solo funciona dentro de un servidor.');
-  }
+  const { guild } = await requireVoiceAccess(interaction);
+  const track = getNowPlaying(guild.id);
 
-  const track = getNowPlaying(interaction.guildId);
   await interaction.reply(
     track
       ? `🎶 Sonando ahora: **${track.title}**`
@@ -389,6 +471,8 @@ const createPlaylistModeButton = (pausedGuilds: Set<string>): ButtonHandler => (
   id: 'atlas-songer:playlist-mode',
   customId: playlistModePattern,
   execute: async (interaction) => {
+    await requireVoiceAccess(interaction);
+
     const match = playlistModePattern.exec(interaction.customId);
     if (!match) {
       return;
@@ -397,6 +481,10 @@ const createPlaylistModeButton = (pausedGuilds: Set<string>): ButtonHandler => (
     const mode = match[1] as 'shuffle' | 'normal';
     const selectionId = match[2];
     const result = await applyPendingSelection(selectionId, mode, interaction.user.id);
+
+    if (interaction.guildId && result.startedNow) {
+      pausedGuilds.delete(interaction.guildId);
+    }
 
     await interaction.update({
       content:
@@ -414,21 +502,14 @@ const createTogglePauseButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:toggle-pause',
   customId: SONGER_COMPONENT_IDS.togglePause,
   execute: async (interaction) => {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: 'Este botón solo funciona dentro de un servidor.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const guildId = interaction.guildId;
-    const isPaused = pausedGuilds.has(guildId);
+    const { guild } = await requireVoiceAccess(interaction);
+    const isPaused = pausedGuilds.has(guild.id);
 
     if (isPaused) {
-      const resumed = await resumePlayback(guildId);
+      const resumed = await resumePlayback(guild.id);
 
       if (!resumed) {
+        pausedGuilds.delete(guild.id);
         await interaction.reply({
           content: 'No hay reproducción pausada para reanudar.',
           flags: MessageFlags.Ephemeral,
@@ -436,9 +517,9 @@ const createTogglePauseButton = (pausedGuilds: Set<string>): ButtonHandler => ({
         return;
       }
 
-      pausedGuilds.delete(guildId);
+      pausedGuilds.delete(guild.id);
       await interaction.update({
-        components: [buildPlaybackControls(pausedGuilds, guildId)],
+        components: [buildPlaybackControls(pausedGuilds, guild.id)],
       });
       await interaction.followUp({
         content: '▶️ Reproducción reanudada.',
@@ -447,9 +528,10 @@ const createTogglePauseButton = (pausedGuilds: Set<string>): ButtonHandler => ({
       return;
     }
 
-    const paused = await pausePlayback(guildId);
+    const paused = await pausePlayback(guild.id);
 
     if (!paused) {
+      pausedGuilds.delete(guild.id);
       await interaction.reply({
         content: 'No hay nada sonando para pausar.',
         flags: MessageFlags.Ephemeral,
@@ -457,9 +539,9 @@ const createTogglePauseButton = (pausedGuilds: Set<string>): ButtonHandler => ({
       return;
     }
 
-    pausedGuilds.add(guildId);
+    pausedGuilds.add(guild.id);
     await interaction.update({
-      components: [buildPlaybackControls(pausedGuilds, guildId)],
+      components: [buildPlaybackControls(pausedGuilds, guild.id)],
     });
     await interaction.followUp({
       content: '⏸️ Reproducción pausada.',
@@ -472,16 +554,13 @@ const createNextButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:queue-next',
   customId: SONGER_COMPONENT_IDS.next,
   execute: async (interaction) => {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: 'Este botón solo funciona dentro de un servidor.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    const { guild } = await requireVoiceAccess(interaction, {
+      requireController: true,
+      controllerAction: 'saltar la pista actual',
+    });
 
-    const skipped = await skipPlayback(interaction.guildId);
-    pausedGuilds.delete(interaction.guildId);
+    const skipped = await skipPlayback(guild.id);
+    pausedGuilds.delete(guild.id);
 
     if (!skipped) {
       await interaction.reply({
@@ -492,7 +571,7 @@ const createNextButton = (pausedGuilds: Set<string>): ButtonHandler => ({
     }
 
     await interaction.update({
-      components: [buildPlaybackControls(pausedGuilds, interaction.guildId)],
+      components: [buildPlaybackControls(pausedGuilds, guild.id)],
     });
     await interaction.followUp({
       content: '⏭️ Saltando a la siguiente canción...',
@@ -505,16 +584,9 @@ const createShuffleButton = (): ButtonHandler => ({
   id: 'atlas-songer:queue-shuffle',
   customId: SONGER_COMPONENT_IDS.shuffle,
   execute: async (interaction) => {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: 'Este botón solo funciona dentro de un servidor.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const shuffled = shuffleQueue(interaction.guildId);
-    const queueSize = getQueueSize(interaction.guildId);
+    const { guild } = await requireVoiceAccess(interaction);
+    const shuffled = shuffleQueue(guild.id);
+    const queueSize = getQueueSize(guild.id);
 
     await interaction.reply({
       content: shuffled
@@ -529,16 +601,13 @@ const createStopButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:queue-stop',
   customId: SONGER_COMPONENT_IDS.stop,
   execute: async (interaction) => {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: 'Este botón solo funciona dentro de un servidor.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    const { guild } = await requireVoiceAccess(interaction, {
+      requireController: true,
+      controllerAction: 'detener la reproducción',
+    });
 
-    const stopped = await stopPlayback(interaction.guildId);
-    pausedGuilds.delete(interaction.guildId);
+    const stopped = await stopPlayback(guild.id);
+    pausedGuilds.delete(guild.id);
 
     if (!stopped) {
       await interaction.reply({
@@ -549,7 +618,7 @@ const createStopButton = (pausedGuilds: Set<string>): ButtonHandler => ({
     }
 
     await interaction.update({
-      components: [buildPlaybackControls(pausedGuilds, interaction.guildId)],
+      components: [buildPlaybackControls(pausedGuilds, guild.id)],
     });
     await interaction.followUp({
       content: '⏹️ Reproducción detenida y cola vaciada.',
@@ -562,16 +631,13 @@ const createLeaveButton = (pausedGuilds: Set<string>): ButtonHandler => ({
   id: 'atlas-songer:queue-leave',
   customId: SONGER_COMPONENT_IDS.leave,
   execute: async (interaction) => {
-    if (!interaction.guildId) {
-      await interaction.reply({
-        content: 'Este botón solo funciona dentro de un servidor.',
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    const { guild } = await requireVoiceAccess(interaction, {
+      requireController: true,
+      controllerAction: 'desconectar a Atlas',
+    });
 
-    const left = await leaveVoice(interaction.guildId);
-    pausedGuilds.delete(interaction.guildId);
+    const left = await leaveVoice(guild.id);
+    pausedGuilds.delete(guild.id);
 
     if (!left) {
       await interaction.reply({
