@@ -10,6 +10,7 @@
     "deploy:commands": "tsx src/deploy-commands.ts"
   },
   "dependencies": {
+    "@atlas/creator": "workspace:*",
     "@atlas/core": "workspace:*",
     "@atlas/shared": "workspace:*",
     "@atlas/songer": "workspace:*",

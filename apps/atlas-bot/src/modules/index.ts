@@ -1,4 +1,5 @@
 import { createModuleFlagConfig, createModuleFlagSourceFromEnv, isModuleFlagEnabled } from '@atlas/shared';
+import { createAtlasCreatorModule } from '@atlas/creator';
 import { createAtlasSongerModule } from '@atlas/songer';
 import type { AtlasModule, AtlasModuleFlags, ModuleFlagSource, SlashCommandData } from '@atlas/types';
 import { env } from '../config/index.js';
@@ -10,6 +11,7 @@ export const createRuntimeModuleFlags = (source?: ModuleFlagSource): AtlasModule
 
 export const createLocalModules = (): AtlasModule[] => {
   return [
+    createAtlasCreatorModule(),
     createAtlasSongerModule({
       lavalink: {
         host: env.LAVALINK_HOST,
