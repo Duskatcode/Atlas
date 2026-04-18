@@ -13,7 +13,8 @@ export interface CreatorServiceDependencies {
 }
 
 export interface CreateSnapshotInput {
-  spec: CreatorSpec;
+  spec?: CreatorSpec;
+  guildId?: string;
   source?: 'memory' | 'discord';
   adapter?: DiscordAdapter;
 }

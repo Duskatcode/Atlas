@@ -32,6 +32,8 @@ export { createEmptySnapshot } from './models/snapshot.js';
 export type {
   CreatorSnapshot,
   SnapshotChannel,
+  SnapshotForumTag,
+  SnapshotPermissionOverwrite,
   SnapshotRole,
 } from './models/snapshot.js';
 
@@ -66,6 +68,7 @@ export type {
 } from './policies/types.js';
 
 export { assertDiscordEnvironment, readDiscordEnvironment } from './adapters/discord/env.js';
+export { DiscordJsAdapter } from './adapters/discord/discordjs-adapter.js';
 export { NoopDiscordAdapter } from './adapters/discord/noop-discord-adapter.js';
 export type {
   DiscordAdapter,

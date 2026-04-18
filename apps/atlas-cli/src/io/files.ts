@@ -14,3 +14,9 @@ export const writeJsonFile = async (
   await mkdir(directory, { recursive: true });
   await writeFile(filePath, JSON.stringify(payload, null, 2));
 };
+
+export const writeTextFile = async (filePath: string, content: string): Promise<void> => {
+  const directory = path.dirname(filePath);
+  await mkdir(directory, { recursive: true });
+  await writeFile(filePath, content, 'utf8');
+};

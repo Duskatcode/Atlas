@@ -18,9 +18,9 @@ export class NoopDiscordAdapter implements DiscordAdapter {
 
   constructor(private readonly env: Required<Pick<DiscordEnvironment, 'guildId'>>) {}
 
-  async fetchSnapshot({ spec }: DiscordAdapterSnapshotInput) {
-    const guildId = spec.guild.id || this.env.guildId;
-    return createEmptySnapshot(guildId, 'discord');
+  async fetchSnapshot({ guildId }: DiscordAdapterSnapshotInput) {
+    const resolvedGuildId = guildId || this.env.guildId;
+    return createEmptySnapshot(resolvedGuildId, 'discord');
   }
 
   async applyPlan({ plan }: DiscordAdapterApplyInput): Promise<ExecutionResult> {

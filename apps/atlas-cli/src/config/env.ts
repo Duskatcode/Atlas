@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import {
-  NoopDiscordAdapter,
-  assertDiscordEnvironment,
+  DiscordJsAdapter,
   readDiscordEnvironment,
   type DiscordAdapter,
 } from '@atlas/creator';
@@ -16,8 +15,13 @@ const cliEnvironmentSchema = z.object({
 export const cliEnvironment = cliEnvironmentSchema.parse(process.env);
 
 export const createDiscordAdapterFromEnv = (): DiscordAdapter => {
-  const rawDiscordEnvironment = readDiscordEnvironment(process.env);
-  const discordEnvironment = assertDiscordEnvironment(rawDiscordEnvironment);
+  const discordEnvironment = readDiscordEnvironment(process.env);
+  if (!discordEnvironment.token) {
+    throw new Error('Falta DISCORD_TOKEN para conectarse a Discord.');
+  }
 
-  return new NoopDiscordAdapter({ guildId: discordEnvironment.guildId });
+  return new DiscordJsAdapter({
+    token: discordEnvironment.token,
+    guildId: discordEnvironment.guildId,
+  });
 };

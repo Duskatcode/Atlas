@@ -10,7 +10,8 @@ export interface DiscordEnvironment {
 }
 
 export interface DiscordAdapterSnapshotInput {
-  spec: CreatorSpec;
+  guildId: string;
+  spec?: CreatorSpec;
 }
 
 export interface DiscordAdapterApplyInput {

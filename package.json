@@ -10,7 +10,8 @@
     "build:cli": "pnpm --filter atlas-cli build",
     "dev:bot": "pnpm --filter atlas-bot dev",
     "dev:cli": "pnpm --filter atlas-cli dev",
-    "cli": "pnpm --filter atlas-cli start --"
+    "cli": "pnpm --filter atlas-cli start --",
+    "creator:snapshot": "pnpm --filter atlas-cli start -- snapshot"
   },
   "keywords": [],
   "author": "",
