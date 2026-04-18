@@ -1,4 +1,4 @@
-import type { CreatorPlan, PlanChange } from '../models/plan.js';
+import { createPlanSummary, type CreatorPlan, type PlanChange } from '../models/plan.js';
 import type { CreatorSnapshot } from '../models/snapshot.js';
 import type { CreatorSpec } from '../models/spec.js';
 
@@ -72,13 +72,7 @@ export const runPolicies = (
     plan: {
       ...plan,
       changes: filteredChanges,
-      summary: {
-        totalChanges: filteredChanges.length,
-        creates: filteredChanges.filter((item) => item.action === 'create').length,
-        updates: filteredChanges.filter((item) => item.action === 'update').length,
-        deletes: filteredChanges.filter((item) => item.action === 'delete').length,
-        noops: filteredChanges.filter((item) => item.action === 'noop').length,
-      },
+      summary: createPlanSummary(filteredChanges),
     },
     notes,
   };

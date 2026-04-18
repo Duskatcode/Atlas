@@ -46,7 +46,10 @@ export {
 } from './models/spec.js';
 export type {
   CreatorChannelSpec,
+  CreatorChannelType,
+  CreatorForumTagSpec,
   CreatorGuildSpec,
+  CreatorPermissionOverwriteSpec,
   CreatorRoleSpec,
   CreatorSpec,
   SpecValidationIssue,
@@ -56,7 +59,7 @@ export type {
 export { DefaultCreatorPlanner } from './planner/default-planner.js';
 export type { CreatePlanInput as PlannerCreatePlanInput, CreatorPlanner } from './planner/types.js';
 
-export { defaultCreatorPolicies, preventManagedDeletePolicy } from './policies/default-policies.js';
+export { defaultCreatorPolicies, flagManagedConflictPolicy } from './policies/default-policies.js';
 export { runPolicies } from './policies/types.js';
 export type {
   AppliedPolicyNote,
