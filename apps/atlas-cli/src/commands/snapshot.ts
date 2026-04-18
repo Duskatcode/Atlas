@@ -1,28 +1,31 @@
 import { createDiscordAdapterFromEnv } from '../config/env.js';
-import { writeJsonFile } from '../io/files.js';
-import { loadSpec } from '../io/spec-loader.js';
+import { writeTextFile } from '../io/files.js';
+import { resolveSnapshotOutputFormat, serializeSnapshot } from '../io/serializer.js';
 import { readStringFlag } from '../utils/args.js';
-import { printJson } from '../utils/output.js';
+import { printText } from '../utils/output.js';
 import type { CommandContext } from './context.js';
-import { defaults } from './context.js';
 
 export const runSnapshotCommand = async ({ args, service }: CommandContext): Promise<void> => {
-  const specPath = readStringFlag(args, 'spec', defaults.specPath) ?? defaults.specPath;
-  const outputPath = readStringFlag(args, 'out');
-  const source = readStringFlag(args, 'source', 'memory') === 'discord' ? 'discord' : 'memory';
-
-  const spec = await loadSpec(specPath);
-  const adapter = source === 'discord' ? createDiscordAdapterFromEnv() : undefined;
-
-  const snapshot = await service.createSnapshot({
-    spec,
-    source,
-    adapter,
-  });
-
-  if (outputPath) {
-    await writeJsonFile(outputPath, snapshot);
+  const guildId = readStringFlag(args, 'guild') ?? readStringFlag(args, 'g');
+  if (!guildId) {
+    throw new Error('Falta --guild <id> para generar snapshot.');
   }
 
-  printJson(snapshot);
+  const outputPath = readStringFlag(args, 'out');
+  const requestedFormat = readStringFlag(args, 'format');
+  const outputFormat = resolveSnapshotOutputFormat(requestedFormat, outputPath);
+  const adapter = createDiscordAdapterFromEnv();
+
+  const snapshot = await service.createSnapshot({
+    source: 'discord',
+    guildId,
+    adapter,
+  });
+  const serializedSnapshot = serializeSnapshot(snapshot, outputFormat);
+
+  if (outputPath) {
+    await writeTextFile(outputPath, serializedSnapshot);
+  }
+
+  printText(serializedSnapshot);
 };

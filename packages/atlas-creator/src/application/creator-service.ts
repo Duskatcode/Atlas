@@ -24,15 +24,23 @@ export class AtlasCreatorService implements CreatorService {
   }
 
   async createSnapshot(input: CreateSnapshotInput): Promise<CreatorSnapshot> {
+    const guildId = input.guildId ?? input.spec?.guild.id;
+    if (!guildId) {
+      throw new Error('No se pudo resolver guildId para crear snapshot.');
+    }
+
     if (input.source === 'discord') {
       if (!input.adapter) {
         throw new Error('Se pidió snapshot de Discord pero no se proporcionó adapter.');
       }
 
-      return input.adapter.fetchSnapshot({ spec: input.spec });
+      return input.adapter.fetchSnapshot({
+        guildId,
+        spec: input.spec,
+      });
     }
 
-    return createEmptySnapshot(input.spec.guild.id, 'memory');
+    return createEmptySnapshot(guildId, 'memory');
   }
 
   async createPlan(input: CreatePlanInput): Promise<CreatePlanResult> {
