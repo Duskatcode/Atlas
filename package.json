@@ -1,10 +1,17 @@
 {
   "name": "Atlas",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Atlas modular Discord bot (Songer + Creator)",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r exec tsc --noEmit -p tsconfig.json",
+    "verify": "pnpm run build && pnpm run typecheck",
+    "bot:dev": "pnpm --filter atlas-bot dev",
+    "bot:start": "pnpm --filter atlas-bot start",
+    "bot:deploy": "pnpm --filter atlas-bot deploy:commands",
+    "lavalink:up": "docker compose -f services/lavalink/compose.yml up -d",
+    "lavalink:down": "docker compose -f services/lavalink/compose.yml down",
+    "lavalink:logs": "docker compose -f services/lavalink/compose.yml logs -f"
   },
   "keywords": [],
   "author": "",
