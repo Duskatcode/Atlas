@@ -1,29 +1,31 @@
 import type { CreatorPolicy } from './types.js';
 
-export const preventManagedDeletePolicy: CreatorPolicy = {
-  id: 'prevent-managed-delete',
-  description: 'Evita eliminar recursos marcados como managed en el snapshot.',
+export const flagManagedConflictPolicy: CreatorPolicy = {
+  id: 'flag-managed-conflict',
+  description: 'Marca conflictos potenciales cuando hay recursos managed con diferencias.',
   evaluate: (change, context) => {
-    if (change.action !== 'delete') {
+    if (change.action !== 'potential-conflict') {
       return { decision: 'allow' };
     }
 
     if (change.resource === 'role') {
-      const role = context.snapshot.roles.find((item) => item.name === change.target);
+      const roleName = change.target.replace('role:', '');
+      const role = context.snapshot.roles.find((item) => item.name === roleName);
       if (role?.managed) {
         return {
-          decision: 'deny',
-          reason: `No se elimina rol managed: ${change.target}`,
+          decision: 'warn',
+          reason: `Conflicto sobre rol managed detectado: ${change.target}`,
         };
       }
     }
 
-    if (change.resource === 'channel') {
-      const channel = context.snapshot.channels.find((item) => item.name === change.target);
+    if (['category', 'text-channel', 'voice-channel', 'forum-channel'].includes(change.resource)) {
+      const [, channelName] = change.target.split(':', 2);
+      const channel = context.snapshot.channels.find((item) => item.name === channelName);
       if (channel?.managed) {
         return {
-          decision: 'deny',
-          reason: `No se elimina canal managed: ${change.target}`,
+          decision: 'warn',
+          reason: `Conflicto sobre canal managed detectado: ${change.target}`,
         };
       }
     }
@@ -32,4 +34,4 @@ export const preventManagedDeletePolicy: CreatorPolicy = {
   },
 };
 
-export const defaultCreatorPolicies: CreatorPolicy[] = [preventManagedDeletePolicy];
+export const defaultCreatorPolicies: CreatorPolicy[] = [flagManagedConflictPolicy];

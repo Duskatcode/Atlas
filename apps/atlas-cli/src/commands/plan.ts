@@ -2,8 +2,8 @@ import { createDiscordAdapterFromEnv } from '../config/env.js';
 import { writeJsonFile } from '../io/files.js';
 import { loadSnapshot } from '../io/snapshot-loader.js';
 import { loadSpec } from '../io/spec-loader.js';
-import { readStringFlag } from '../utils/args.js';
-import { printJson } from '../utils/output.js';
+import { readBooleanFlag, readStringFlag } from '../utils/args.js';
+import { formatPlanForTerminal, printJson, printText } from '../utils/output.js';
 import type { CommandContext } from './context.js';
 import { defaults } from './context.js';
 
@@ -11,7 +11,10 @@ export const runPlanCommand = async ({ args, service }: CommandContext): Promise
   const specPath = readStringFlag(args, 'spec', defaults.specPath) ?? defaults.specPath;
   const snapshotPath = readStringFlag(args, 'snapshot');
   const outputPath = readStringFlag(args, 'out');
-  const source = readStringFlag(args, 'source', 'memory') === 'discord' ? 'discord' : 'memory';
+  const guildId = readStringFlag(args, 'guild') ?? readStringFlag(args, 'g');
+  const source = readStringFlag(args, 'source', 'discord') === 'memory' ? 'memory' : 'discord';
+  const showJson = readBooleanFlag(args, 'json', false);
+  const showSkips = readBooleanFlag(args, 'verbose', false);
 
   const spec = await loadSpec(specPath);
 
@@ -22,6 +25,7 @@ export const runPlanCommand = async ({ args, service }: CommandContext): Promise
         spec,
         source,
         adapter,
+        guildId,
       });
 
   const planResult = await service.createPlan({
@@ -33,5 +37,14 @@ export const runPlanCommand = async ({ args, service }: CommandContext): Promise
     await writeJsonFile(outputPath, planResult.plan);
   }
 
-  printJson(planResult);
+  if (showJson) {
+    printJson(planResult);
+    return;
+  }
+
+  printText(
+    formatPlanForTerminal(planResult.plan, planResult.policyNotes, {
+      showSkips,
+    }),
+  );
 };
