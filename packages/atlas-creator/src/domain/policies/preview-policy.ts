@@ -1,5 +1,5 @@
 export interface CreatorPolicy {
-  mode: 'preview-only';
+  mode: 'preview-only' | 'safe-apply';
   allowsApply: boolean;
   allowsDestructiveChanges: boolean;
   duplicateStrategy: 'skip-existing';
